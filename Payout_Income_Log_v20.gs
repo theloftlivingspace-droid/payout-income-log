@@ -1,24 +1,14 @@
 // ═══════════════════════════════════════════════════════════════
-// Payout_Income_Log_v20.gs
+// Payout_Income_Log_v20.gs  (updated: getSheet1CiCoMap, font reset, more MANUAL_ROOM_FIXES)
 // Changes from v19:
 //   1. roomFromText(): เพิ่ม "cosy apartment", "private apartment",
 //      "mycondo", "363" → '363' (Mycondo A/B ห้อง 363)
 //   2. MANUAL_ROOM_FIXES: ตารางแก้ห้องที่ยังเป็น '?' แบบ hardcode
-//      ครอบคลุม Trip.com/Expedia ที่ matchRoomFromSheet1() ยังหาไม่เจอ:
-//        - Akhoundi/Farzad      → 363 (Mycondo)
-//        - FAN/MEIYU            → 363 (Mycondo)
-//        - GANTO/CAWANCHAI      → 363 (Mycondo)
-//        - PONPIAN/NAPADA       → 363 (Mycondo)
-//        - RAI/ROMAN            → 363 (Mycondo)
-//        - doungprasert/Khajonyod → 203 (cancel Expedia)
-//        - SU MYAT/AUNG         → 103 (cancel Trip.com)
-//        - Rattanabamrung/Araya → 103 (cancel Trip.com)
 //   3. applyManualRoomFixes(): รัน pass สุดท้ายหลัง matchRoomFromSheet1()
-//      ใช้ Booking ID เป็น key หลัก (exact) + guest name fallback
 //   4. fullRebuild() / dailyEmailSync() / rematch() เรียก applyManualRoomFixes()
+//   5. buildSCBRows(): เพิ่ม getSheet1CiCoMap() fallback ci/co/nights
+//   6. sortPayoutByOTA(): เพิ่ม font reset loop สำหรับ SCB sub/total rows
 // ═══════════════════════════════════════════════════════════════
-// Ctrl+A → Copy → วางใน Apps Script → Save
-// รัน fullRebuild() → รัน createDailyTrigger()
 
 const MASTER_SHEET_ID = '1XbTJLhecql_HNqyE80Hc6h30A2_elIxliudF4e6Rlz0';
 const TAB_NAME        = 'Payout_Income_Log';
@@ -49,36 +39,38 @@ const SCB_SUB_BG   = '#f1f8e9';
 // ═══════════════════════════════════════════════════════════════
 var MANUAL_ROOM_FIXES = [
   // ── Mycondo 363 ─────────────────────────────────────────────
-  { conf:'HMRKPSAX9F', room:'363' },
-  { conf:'HMP9HW25EN', room:'363' },
+  { conf:'HMRKPSAX9F', room:'363' },  // Harley Bowman
+  { conf:'HMP9HW25EN', room:'363' },  // Hélèm Saouchi
   // ── ยืนยันจาก invoice + Sheet1 ────────────────────────────
-  { conf:'HMWXCP29RP', room:'214' },
-  { conf:'HM9X2AW3R3', room:'113' },
-  { conf:'HMTZCKN2XM', room:'214' },
-  { conf:'HMYD8PBRFR', room:'214' },
-  { conf:'HMCTA5TJ35', room:'113' },
-  { conf:'HM4RDKF888', room:'214' },
-  { conf:'HMSJPE93NS', room:'113' },
-  { conf:'HMNHWSPHPT', room:'214' },
-  { conf:'HMZJN29RZ5', room:'214' },
-  { conf:'HMRFAMDAXW', room:'113' },
-  { conf:'HM3A89NS8M', room:'214' },
-  { conf:'HM529FX8QH', room:'214' },
-  { conf:'HMMWTMN5QS', room:'113' },
-  { conf:'HMCBAE24X2', room:'214' },
-  { conf:'HMDKRWE9ST', room:'214' },
-  { conf:'HMXS5X9J9T', room:'214' },
-  { conf:'HMM2YXSJXC', room:'113' },
-  { conf:'HMTF5QWZ38', room:'113' },
-  { conf:'HM49DKJYBR', room:'113' },
-  { conf:'HMTQJXECS9', room:'203' },
-  { conf:'HMNNRSRWEK', room:'203' },
-  { conf:'HMPJDDT2X2', room:'103' },
-  // ── Trip.com ────────────────────────────────────────────────
-  { bid:'1128145356180955', room:'103' },
-  { bid:'1616327691667562', room:'103' },
-  { bid:'1622924707373102', room:'204' },
-  { bid:'1539361352649181', room:'203' },
+  { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues
+  { conf:'HM9X2AW3R3', room:'113' },  // Eiji Uenaka
+  { conf:'HMTZCKN2XM', room:'214' },  // Dogukan Kaner
+  { conf:'HMYD8PBRFR', room:'214' },  // La'Tavia Antrice
+  { conf:'HMCTA5TJ35', room:'113' },  // Nihel Ben Naceur
+  { conf:'HM4RDKF888', room:'214' },  // Sarah Carrington
+  { conf:'HMSJPE93NS', room:'113' },  // Luisa Marriaga
+  { conf:'HMNHWSPHPT', room:'214' },  // Poonchanok Gramut
+  { conf:'HMZJN29RZ5', room:'214' },  // Cristina P
+  { conf:'HMRFAMDAXW', room:'113' },  // Dick Blom
+  { conf:'HM3A89NS8M', room:'214' },  // Josh Cadle
+  { conf:'HM529FX8QH', room:'214' },  // Gabriel Carletto
+  { conf:'HMMWTMN5QS', room:'113' },  // Lona Lee
+  { conf:'HMCBAE24X2', room:'214' },  // Gabriel Carletto
+  { conf:'HMDKRWE9ST', room:'214' },  // Laurent Pierre Noguer
+  { conf:'HMXS5X9J9T', room:'214' },  // May Zin
+  { conf:'HMM2YXSJXC', room:'113' },  // Hasan Workman
+  { conf:'HMTF5QWZ38', room:'113' },  // Keegan Jacinto
+  { conf:'HM49DKJYBR', room:'113' },  // Ngân Nguyễn Thị
+  { conf:'HMTQJXECS9', room:'203' },  // SM Muhaimen Mahmood (cancel)
+  { conf:'HMNNRSRWEK', room:'203' },  // Siren Wills
+  { conf:'HMPJDDT2X2', room:'103' },  // 妘芮 Lin
+  // ── Trip.com — ยืนยันจาก invoice ──────────────────────────
+  { bid:'1128145356180955', room:'103' },  // Akhoundi/Farzad
+  { bid:'1616327691667562', room:'103' },  // FAN/MEIYU
+  { bid:'1622924707373102', room:'204' },  // GANTO/CAWANCHAI
+  { bid:'1539361352649181', room:'203' },  // RAI/ROMAN
+  { bid:'1578947342348802', room:'103' },  // SU MYAT/AUNG
+  { bid:'1622927451953412', room:'103' },  // Rattanabamrung/Araya
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -598,7 +590,6 @@ function matchSCBtoOTA(sheet) {
   });
 
   Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand');
-
   replacements.sort(function(a,b){ return b.deleteRow-a.deleteRow; });
   replacements.forEach(function(rep) {
     sheet.deleteRow(rep.deleteRow);
@@ -625,20 +616,31 @@ function matchSCBtoOTA(sheet) {
   Logger.log('matchSCBtoOTA: done');
 }
 
-function buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
-                      refIds,guests,nets,detailByConf,detailByBid,payType) {
-  if (guests.length===1) {
-    var ref   =(refIds[0]||'').toString().trim();
-    var guest =(guests[0]||'').toString().trim();
-    var net   =parseAmt(nets[0]||scbAmt);
-    var detail=detailByConf[ref]||detailByBid[ref]
-              ||detailByBid['guest:'+normG(guest)]||{};
-    var room  =isValidRoom(detail.room)?detail.room:'?';
-    var ci    =dateStr(detail.ci);
-    var co    =dateStr(detail.co);
-    var nts   =detail.nights||nightsBetween(ci,co)||'';
-    var note  ='✅ '+payType+' | '+guest+'('+ref+') NET ฿'+nets[0]+' | Value Date: '+scbDate;
-    var r=makeRow(scbOTA,scbDate,scbBid,ref,
+function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
+                      refIds, guests, nets, detailByConf, detailByBid, payType) {
+
+  // ✅ โหลด Sheet1 สำหรับ fallback ci/co/nights
+  var s1Map = getSheet1CiCoMap();
+
+  if (guests.length === 1) {
+    var ref    = (refIds[0] || '').toString().trim();
+    var guest  = (guests[0] || '').toString().trim();
+    var net    = parseAmt(nets[0] || scbAmt);
+    var detail = detailByConf[ref] || detailByBid[ref]
+               || detailByBid['guest:' + normG(guest)] || {};
+    var room   = isValidRoom(detail.room) ? detail.room : '?';
+    var ci     = dateStr(detail.ci);
+    var co     = dateStr(detail.co);
+    var nts    = detail.nights || nightsBetween(ci, co) || '';
+
+    // ✅ fallback จาก Sheet1 ถ้า ci/co ว่าง
+    if (!ci || !co) {
+      var s1 = s1Map[normG(guest)];
+      if (s1) { ci = s1.ci; co = s1.co; nts = s1.nights || nightsBetween(ci, co); }
+    }
+
+    var note = '✅ '+payType+' | '+guest+'('+ref+') NET ฿'+nets[0]+' | Value Date: '+scbDate;
+    var r = makeRow(scbOTA,scbDate,scbBid,ref,
       guest,room,ci,co,nts,scbAmt,'',scbAmt,
       '✅ Matched - '+payType,note);
     r._isSingle=true; r._isTotal=false;
@@ -694,6 +696,27 @@ function dateStr(v) {
   return v.toString().substring(0,10);
 }
 
+// ✅ NEW: Sheet1 ci/co fallback map
+function getSheet1CiCoMap() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var s1 = ss.getSheets()[0];
+  var data = s1.getDataRange().getValues();
+  var map = {};
+  var h = data[0].map(function(v){ return v.toString().trim().toLowerCase(); });
+  var cG  = h.indexOf('ชื่อแขก');
+  var cCI = h.indexOf('เช็คอิน');
+  var cCO = h.indexOf('เช็คเอาท์');
+  for (var i = 1; i < data.length; i++) {
+    var g  = normG((data[i][cG]  || '').toString());
+    var ci = dateStr(data[i][cCI]);
+    var co = dateStr(data[i][cCO]);
+    if (g && ci && co) {
+      map[g] = { ci: ci, co: co, nights: nightsBetween(ci, co) };
+    }
+  }
+  return map;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MATCH ROOM FROM SHEET1
 // ═══════════════════════════════════════════════════════════════
@@ -710,7 +733,6 @@ function matchRoomFromSheet1() {
   var cR =h1.indexOf('เลขห้อง');
   var cG =h1.indexOf('ชื่อแขก');
   var cCI=h1.indexOf('เช็คอิน');
-  var cCO=h1.indexOf('เช็คเอาท์');
   if (cR<0) cR=0;
 
   var byGuest={}, byGuestAll={};
@@ -737,10 +759,10 @@ function matchRoomFromSheet1() {
   if (!paySheet) return;
   var payData=paySheet.getDataRange().getValues();
   var pH=payData[0].map(function(h){return h.toString().trim();});
-  var pG  =pH.indexOf('ชื่อแขก');
-  var pR  =pH.indexOf('ห้อง')>=0?pH.indexOf('ห้อง'):pH.indexOf('เลขห้อง');
-  var pCI =pH.indexOf('เช็คอิน');
-  var pOTA=pH.indexOf('OTA');
+  var pG    =pH.indexOf('ชื่อแขก');
+  var pR    =pH.indexOf('ห้อง')>=0?pH.indexOf('ห้อง'):pH.indexOf('เลขห้อง');
+  var pCI   =pH.indexOf('เช็คอิน');
+  var pOTA  =pH.indexOf('OTA');
   var pNotes=pH.indexOf('หมายเหตุ');
 
   var updated=0;
@@ -826,7 +848,7 @@ function normG(s) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// APPLY MANUAL ROOM FIXES  ← NEW in v20
+// APPLY MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
 function applyManualRoomFixes() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
@@ -848,14 +870,11 @@ function applyManualRoomFixes() {
   for (var i = 0; i < data.length; i++) {
     var curRoom = (data[i][pRoom] || '').toString().trim();
     if (isValidRoom(curRoom)) continue;
-
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
     if (otaVal.startsWith('SCB') && (notesVal.startsWith('✅') || notesVal.startsWith('↳'))) continue;
-
     var bid  = (data[i][pBid]  || '').toString().trim();
     var conf = (data[i][pConf] || '').toString().trim();
-
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
@@ -980,6 +999,23 @@ function sortPayoutByOTA(sheet) {
   dataRange.setFontWeights(rows.map(function(r){return r.fw;}));
   dataRange.setFontStyles(rows.map(function(r){return r.fs;}));
   sheet.getRange(2,10,lastRow-1,3).setNumberFormat('#,##0.00');
+
+  // ✅ font reset: SCB sub-rows italic, total rows bold
+  var lastR = sheet.getLastRow();
+  if (lastR > 1) {
+    var allData = sheet.getRange(2, 1, lastR-1, HEADERS.length).getValues();
+    allData.forEach(function(row, i) {
+      var notes = (row[C.notes-1] || '').toString();
+      var rng = sheet.getRange(i+2, 1, 1, HEADERS.length);
+      if (notes.startsWith('↳')) {
+        rng.setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
+      } else if ((row[C.ota-1] || '').toString().startsWith('SCB')) {
+        rng.setFontWeight('bold').setFontStyle('normal').setFontColor('#000000');
+      } else {
+        rng.setFontWeight('normal').setFontStyle('normal').setFontColor('#000000');
+      }
+    });
+  }
   Logger.log('sortPayoutByOTA: '+rows.length+' rows sorted');
 }
 
@@ -1339,9 +1375,6 @@ function thaiDateToISO(s){
   return tripDateToISO(s);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// v20: roomFromText()
-// ═══════════════════════════════════════════════════════════════
 function roomFromText(s){
   if (!s) return '?';
   s=s.toString().toLowerCase().trim();
@@ -1352,14 +1385,12 @@ function roomFromText(s){
   if (m) return m[1];
   return '?';
 }
-
 function isValidRoom(r){
   if (!r) return false;
   var s=r.toString().trim();
   if (!s||s==='?') return false;
   return /^\d[\d\/,\s]*$/.test(s);
 }
-
 function prevMonth(ym){
   var y=parseInt(ym.substring(0,4)),m=parseInt(ym.substring(5,7));
   m--; if(m<1){m=12;y--;} return y+'-'+(m<10?'0':'')+m;
