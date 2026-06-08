@@ -255,7 +255,7 @@ function parseAirbnbEmail(msg) {
   var rows = [], i = 0;
   while (i < lines.length) {
     var ln = lines[i];
-    var gam = ln.match(/^(.+?)\s{2,}(?:฿|\u0e3f)([\d,]+\.\d+)\s*THB$/i);
+    var gam = ln.match(/^(.+?)\s{2,}[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
     if (!gam) { i++; continue; }
     var guest = gam[1].trim();
     var net   = gam[2].replace(/,/g,'');
@@ -266,7 +266,7 @@ function parseAirbnbEmail(msg) {
     var checkIn='',checkOut='',isRes=false,resDate='';
     for (var j=i+1;j<Math.min(i+10,lines.length);j++) {
       var nl=lines[j];
-      if (!homeLine&&/^Home\s*[•·]/.test(nl)) {
+      if (!homeLine && /^Home\s*[•·\u2022\u00b7\-]/.test(nl)) {
         homeLine=nl;
         var dm=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (dm) { checkIn=slashToISO(dm[1]); checkOut=slashToISO(dm[2]); }
