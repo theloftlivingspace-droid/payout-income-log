@@ -1341,9 +1341,11 @@ function nightsBetween(d1,d2){
   var n=Math.round((new Date(d2)-new Date(d1))/86400000);
   return n>0?n:'';
 }
-function slashToISO(s){
-  var p=s.split('/');
-  return p.length===3?p[2]+'-'+p[0].padStart(2,'0')+'-'+p[1].padStart(2,'0'):s;
+function slashToISO(s) {
+  var p = s.split('/');
+  if (p.length !== 3) return s;
+  // Airbnb ส่งมาเป็น m/d/yyyy
+  return p[2] + '-' + p[0].padStart(2,'0') + '-' + p[1].padStart(2,'0');
 }
 function lhDateToISO(s){
   var MO={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
