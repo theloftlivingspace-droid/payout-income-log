@@ -1712,3 +1712,80 @@ function debugUnresolvedRooms(){
   Logger.log('Total unresolved rooms: '+count);
 }
 
+
+
+// ═══════════════════════════════════════════════════════════════
+// OVERRIDE: syncSCBTotalRooms — skip total rows whose bid is in MANUAL_ROOM_FIXES
+// ═══════════════════════════════════════════════════════════════
+function syncSCBTotalRooms() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return;
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last-1, HEADERS.length).getValues();
+  var pOTA   = C.ota-1;
+  var pRoom  = C.room-1;
+  var pNotes = C.notes-1;
+  var pBid   = C.bid-1;
+  var fixed  = 0;
+
+  // build set of bids/confs that have manual room fixes
+  var manualBids = {};
+  MANUAL_ROOM_FIXES.forEach(function(fx) {
+    if (fx.bid)  manualBids['bid:'  + fx.bid]  = fx.room;
+    if (fx.conf) manualBids['conf:' + fx.conf] = fx.room;
+  });
+
+  var i = 0;
+  while (i < data.length) {
+    var ota   = (data[i][pOTA]   || '').toString().trim();
+    var notes = (data[i][pNotes] || '').toString().trim();
+    // find SCB total row (not sub-row, not single)
+    if (ota.startsWith('SCB') && !notes.startsWith('\u21b3')) {
+      var bid = (data[i][pBid] || '').toString().trim();
+      // skip if this bid is pinned in MANUAL_ROOM_FIXES
+      if (manualBids['bid:' + bid] !== undefined) {
+        Logger.log('syncSCBTotalRooms: skip manual-fixed bid=' + bid);
+        // still advance past sub-rows
+        var j = i + 1;
+        while (j < data.length) {
+          var sn = (data[j][pNotes] || '').toString().trim();
+          var so = (data[j][pOTA]   || '').toString().trim();
+          if (!so.startsWith('SCB') || !sn.startsWith('\u21b3')) break;
+          j++;
+        }
+        i = j;
+        continue;
+      }
+
+      // collect rooms from sub-rows ONLY (never seed from totalRoom — avoids duplicates on re-run)
+      var rooms = [];
+      var totalRoom = (data[i][pRoom] || '').toString().trim();
+      var j = i + 1;
+      while (j < data.length) {
+        var subNotes = (data[j][pNotes] || '').toString().trim();
+        var subOTA   = (data[j][pOTA]   || '').toString().trim();
+        if (!subOTA.startsWith('SCB') || !subNotes.startsWith('\u21b3')) break;
+        var subRoom = (data[j][pRoom] || '').toString().trim();
+        if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        j++;
+      }
+      // only update if we actually found sub-rows AND got rooms
+      var hadSubRows = (j > i + 1);
+      if (hadSubRows && rooms.length > 1) {
+        var merged = rooms.join(', ');
+        if (merged !== totalRoom) {
+          sheet.getRange(i+2, pRoom+1).setValue(merged);
+          data[i][pRoom] = merged;
+          fixed++;
+          Logger.log('syncSCBTotalRooms: row '+(i+2)+' → '+merged);
+        }
+      }
+      i = j; // skip past sub-rows
+    } else {
+      i++;
+    }
+  }
+  Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
+}
