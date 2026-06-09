@@ -88,6 +88,10 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-05-16-1169.49',  room:'108' },  // Dave Casey / Airbnb
   { bid:'SCB-2026-05-26-1423.79',  room:'103' },  // Natthaphon Pakhothanang / booking
   { bid:'SCB-2026-05-31-2996.07',  room:'113' },  // Eiji Uenaka / Airbnb
+  { conf:'HMF3M5DXDD', room:'205' },  // Cedric Nixon / Airbnb
+  { conf:'HM29NH5XYT', room:'103' },  // Nick Laschet / Airbnb (Jun)
+  { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
+  { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
@@ -130,6 +134,7 @@ function fullRebuild() {
   matchSCBtoOTA(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  syncSCBTotalRooms();
   sortPayoutByOTA(sheet);
   rebuildBankLedger();
 
@@ -146,6 +151,7 @@ function rematch() {
   matchSCBtoOTA(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  syncSCBTotalRooms();
   SpreadsheetApp.getActiveSpreadsheet().toast('Rematch เสร็จ', 'Done', 3);
 }
 
@@ -176,6 +182,7 @@ function dailyEmailSync() {
   matchSCBtoOTA(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  syncSCBTotalRooms();
   sortPayoutByOTA(sheet);
   rebuildBankLedger();
 
@@ -879,6 +886,58 @@ function normG(s) {
 // ═══════════════════════════════════════════════════════════════
 // APPLY MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// SYNC SCB TOTAL ROW ROOMS FROM SUB-ROWS
+// รัน after applyManualRoomFixes — collect rooms from ↳ sub-rows และ update total row
+// ═══════════════════════════════════════════════════════════════
+function syncSCBTotalRooms() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return;
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last-1, HEADERS.length).getValues();
+  var pOTA   = C.ota-1;
+  var pRoom  = C.room-1;
+  var pNotes = C.notes-1;
+  var fixed = 0;
+
+  var i = 0;
+  while (i < data.length) {
+    var ota   = (data[i][pOTA]   || '').toString().trim();
+    var notes = (data[i][pNotes] || '').toString().trim();
+    // find SCB total row (not sub-row, not single)
+    if (ota.startsWith('SCB') && !notes.startsWith('\u21b3')) {
+      // collect rooms from following sub-rows
+      var rooms = [];
+      var totalRoom = (data[i][pRoom] || '').toString().trim();
+      if (totalRoom && totalRoom !== '?') rooms.push(totalRoom);
+      var j = i + 1;
+      while (j < data.length) {
+        var subNotes = (data[j][pNotes] || '').toString().trim();
+        var subOTA   = (data[j][pOTA]   || '').toString().trim();
+        if (!subOTA.startsWith('SCB') || !subNotes.startsWith('\u21b3')) break;
+        var subRoom = (data[j][pRoom] || '').toString().trim();
+        if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        j++;
+      }
+      if (rooms.length > 1) {
+        var merged = rooms.join(', ');
+        if (merged !== totalRoom) {
+          sheet.getRange(i+2, pRoom+1).setValue(merged);
+          data[i][pRoom] = merged;
+          fixed++;
+          Logger.log('syncSCBTotalRooms: row '+(i+2)+' → '+merged);
+        }
+      }
+      i = j; // skip past sub-rows
+    } else {
+      i++;
+    }
+  }
+  Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
+}
+
 function applyManualRoomFixes() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var paySheet = ss.getSheetByName(TAB_NAME);
@@ -1143,6 +1202,7 @@ function fullSyncAndLedger() {
   matchSCBtoOTA(paySheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  syncSCBTotalRooms();
   rebuildBankLedger();
   SpreadsheetApp.getActiveSpreadsheet()
     .toast('Sync เสร็จ: Trip.com +'+tripCount+' | Bank_Ledger updated','Done',6);
