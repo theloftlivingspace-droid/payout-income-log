@@ -909,10 +909,9 @@ function syncSCBTotalRooms() {
     var notes = (data[i][pNotes] || '').toString().trim();
     // find SCB total row (not sub-row, not single)
     if (ota.startsWith('SCB') && !notes.startsWith('\u21b3')) {
-      // collect rooms from following sub-rows
+      // collect rooms from sub-rows ONLY (never seed from totalRoom — avoids duplicates on re-run)
       var rooms = [];
       var totalRoom = (data[i][pRoom] || '').toString().trim();
-      if (totalRoom && totalRoom !== '?') rooms.push(totalRoom);
       var j = i + 1;
       while (j < data.length) {
         var subNotes = (data[j][pNotes] || '').toString().trim();
@@ -922,7 +921,7 @@ function syncSCBTotalRooms() {
         if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
         j++;
       }
-      // only update if we actually found sub-rows (j > i+1) AND got more rooms
+      // only update if we actually found sub-rows AND got rooms
       var hadSubRows = (j > i + 1);
       if (hadSubRows && rooms.length > 1) {
         var merged = rooms.join(', ');
