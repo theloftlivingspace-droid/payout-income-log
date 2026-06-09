@@ -984,10 +984,9 @@ function rebuildBankLedger() {
     var ota  =(row[C.ota-1]  ||'').toString().trim();
     var notes=(row[C.notes-1]||'').toString().trim();
     var bid  =(row[C.bid-1]  ||'').toString().trim();
-    if (ota==='Airbnb') return;                                // exclude Airbnb
-    if (ota.startsWith('SCB')&&notes.startsWith('↳')) return;  // exclude SCB sub-rows
-    if (ota.startsWith('SCB')&&!notes.startsWith('✅')) return; // exclude SCB unmatched (รอ match)
-    if (!ota) return;                                           // exclude blank/empty rows
+    if (!ota.startsWith('SCB')) return;                         // SCB only
+    if (notes.startsWith('↳')) return;                         // exclude SCB sub-rows
+    if (!notes.startsWith('✅')) return;                        // exclude SCB unmatched
     if (bid==='THB' || /^\d/.test(ota)) return;               // exclude summary/footer rows
     keepRows.push(row); keepFmts.push(srcFmts[i]);
   });
