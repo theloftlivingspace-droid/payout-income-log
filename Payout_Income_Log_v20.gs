@@ -1847,3 +1847,119 @@ function applyManualRoomFixes() {
   }
   Logger.log('applyManualRoomFixes: ' + fixed + ' rows fixed');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// OVERRIDE: styleSheet1 — fix room color match (number→type) + รอยืนยัน
+// ═══════════════════════════════════════════════════════════════
+function styleSheet1(){
+  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sh=ss.getSheetByName('Sheet1');
+  if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
+  sh.clearFormats();
+  var lastRow=sh.getLastRow(), lastCol=7;
+  if (lastRow<1) return;
+
+  sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
+  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200);
+
+  var header=sh.getRange(1,1,1,lastCol);
+  header.setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
+        .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setRowHeight(1,36); sh.setFrozenRows(1);
+
+  // base alternating rows
+  for (var r=2;r<=lastRow;r++){
+    sh.getRange(r,1,1,lastCol)
+      .setBackground(r%2===0?'#f8f9fa':'#ffffff')
+      .setFontColor('#333333').setFontSize(10).setVerticalAlignment('middle');
+    sh.setRowHeight(r,26);
+  }
+
+  // room number → type map
+  var ROOM_TYPE_MAP = {
+    '103':'elegance','108':'retro','113':'legacy',
+    '203':'allure','204':'elegance','205':'allure',
+    '209':'radiance','210':'radiance','214':'legacy','300':'luxury'
+  };
+
+  var ROOM_COLORS={
+    'luxury'   :{bg:'#fff3cd',font:'#856404'},
+    'retro'    :{bg:'#d1ecf1',font:'#0c5460'},
+    'elegance' :{bg:'#d4edda',font:'#155724'},
+    'allure'   :{bg:'#e2d9f3',font:'#4a235a'},
+    'legacy'   :{bg:'#fde8d8',font:'#7d3c0a'},
+    'radiance' :{bg:'#d0f0fc',font:'#0a4d6e'},
+    'cancel'   :{bg:'#f8d7da',font:'#721c24'},
+    'ยกเลิก'   :{bg:'#f8d7da',font:'#721c24'},
+    'no show'  :{bg:'#ffeeba',font:'#856404'},
+    'รอยืนยัน' :{bg:'#e2e3e5',font:'#383d41'}
+  };
+
+  var CHANNEL_COLORS={
+    'Airbnb'  :{bg:'#ff5a5f',font:'#ffffff'},
+    'Booking' :{bg:'#003580',font:'#ffffff'},
+    'Expedia' :{bg:'#ffc72c',font:'#333333'},
+    'Trip'    :{bg:'#00aaff',font:'#ffffff'},
+    'Direct'  :{bg:'#28a745',font:'#ffffff'}
+  };
+
+  var dataVals=sh.getRange(2,1,lastRow-1,1).getValues();
+  dataVals.forEach(function(row,i){
+    var r=i+2;
+    var cv=(row[0]||'').toString().trim();
+    var cvL=cv.toLowerCase();
+    var fullRow=sh.getRange(r,1,1,lastCol);
+    var cellA=sh.getRange(r,1);
+
+    // สถานะพิเศษก่อน
+    if (cvL.indexOf('cancel')>=0||cvL.indexOf('ยกเลิก')>=0){
+      fullRow.setBackground(ROOM_COLORS['cancel'].bg).setFontColor(ROOM_COLORS['cancel'].font);
+      return;
+    }
+    if (cvL.indexOf('no show')>=0){
+      fullRow.setBackground(ROOM_COLORS['no show'].bg).setFontColor(ROOM_COLORS['no show'].font);
+      cellA.setFontWeight('bold');
+      return;
+    }
+    if (cv==='รอยืนยัน'){
+      fullRow.setBackground(ROOM_COLORS['รอยืนยัน'].bg).setFontColor(ROOM_COLORS['รอยืนยัน'].font);
+      cellA.setFontStyle('italic');
+      return;
+    }
+
+    // ดึงเลขห้องจาก col A (เช่น "103 Elegance" หรือ "103")
+    var roomNum = cv.split(/\s+/)[0];
+    var typeName = ROOM_TYPE_MAP[roomNum];
+    if (typeName && ROOM_COLORS[typeName]){
+      cellA.setBackground(ROOM_COLORS[typeName].bg)
+           .setFontColor(ROOM_COLORS[typeName].font)
+           .setFontWeight('bold');
+    }
+  });
+
+  // col E — Channel color
+  var chanData=sh.getRange(2,5,lastRow-1,1).getValues();
+  chanData.forEach(function(row,i){
+    var r=i+2, ch=(row[0]||'').toString().trim(), cell=sh.getRange(r,5);
+    Object.keys(CHANNEL_COLORS).forEach(function(key){
+      if (ch.toLowerCase().indexOf(key.toLowerCase())>=0)
+        cell.setBackground(CHANNEL_COLORS[key].bg).setFontColor(CHANNEL_COLORS[key].font)
+            .setFontWeight('bold').setHorizontalAlignment('center');
+    });
+  });
+
+  // col G — Note
+  var noteData=sh.getRange(2,7,lastRow-1,1).getValues();
+  noteData.forEach(function(row,i){
+    if ((row[0]||'').toString().trim())
+      sh.getRange(i+2,7).setBackground('#fff8e1').setFontColor('#5d4037').setFontStyle('italic');
+  });
+
+  sh.getRange(2,3,lastRow-1,2).setHorizontalAlignment('center');
+  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note'];
+  sh.getRange(1,1,1,lastCol).setValues([SH]);
+  sh.getRange(1,1,lastRow,lastCol).setBorder(true,true,true,true,false,false,'#cccccc',SpreadsheetApp.BorderStyle.SOLID);
+  sh.getRange(2,1,lastRow-1,lastCol).setBorder(false,false,false,false,false,true,'#e0e0e0',SpreadsheetApp.BorderStyle.SOLID);
+  SpreadsheetApp.flush();
+  Logger.log('styleSheet1: เสร็จแล้ว');
+}
