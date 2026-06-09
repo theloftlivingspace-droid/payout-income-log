@@ -2415,6 +2415,34 @@ function runAirbnbEmailParse() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// WEB APP ENDPOINT
+// ═══════════════════════════════════════════════════════════════
+function doGet(e) {
+  var ss        = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheetName = (e && e.parameter && e.parameter.sheet) ? e.parameter.sheet : 'Payout_Income_Log';
+  var sheet     = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: 'Sheet not found: ' + sheetName }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  var data    = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var rows    = data.slice(1).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h, i) {
+      var val = row[i];
+      if (val instanceof Date) val = Utilities.formatDate(val, 'Asia/Bangkok', 'yyyy-MM-dd');
+      obj[h] = val;
+    });
+    return obj;
+  });
+  return ContentService
+    .createTextOutput(JSON.stringify({ sheet: sheetName, count: rows.length, rows: rows }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // GITHUB EXPORT
 // ═══════════════════════════════════════════════════════════════
 function exportToGitHub() {
