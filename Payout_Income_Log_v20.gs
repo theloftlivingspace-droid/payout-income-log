@@ -867,6 +867,7 @@ function applyManualRoomFixes() {
   var pRoom  = pH.indexOf('ห้อง') >= 0 ? pH.indexOf('ห้อง') : pH.indexOf('เลขห้อง');
   var pNotes = pH.indexOf('หมายเหตุ');
   var pOTA   = pH.indexOf('OTA');
+  var pGuest = pH.indexOf('ชื่อแขก');
 
   var fixed = 0;
   for (var i = 0; i < data.length; i++) {
