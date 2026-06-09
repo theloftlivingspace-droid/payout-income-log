@@ -88,7 +88,7 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-05-16-1169.49',  room:'108' },  // Dave Casey / Airbnb
   { bid:'SCB-2026-05-26-1423.79',  room:'103' },  // Natthaphon Pakhothanang / booking
   { bid:'SCB-2026-05-31-2996.07',  room:'113' },  // Eiji Uenaka / Airbnb
-  { bid:'SCB-2026-05-05-5555.03',  room:'204' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
+  { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
   { guest:'Hélèm Saouchi',                     room:'363' },  // conf HMP9HW25EN
@@ -823,6 +823,7 @@ function matchRoomFromSheet1() {
 
     var curRoom=(pr[pR]||'').toString().trim();
     if (isValidRoom(curRoom)) continue;
+    if (curRoom.indexOf(',') >= 0) continue;  // skip multi-room already set
     var guestRaw=(pr[pG]||'').toString().trim();
     if (!guestRaw||/^(รอ match)$/i.test(guestRaw)) continue;
     var ci=pr[pCI]?new Date(pr[pCI]):null;
