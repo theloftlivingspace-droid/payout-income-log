@@ -969,26 +969,28 @@ function applyManualRoomFixes() {
   var fixed = 0;
   for (var i = 0; i < data.length; i++) {
     var curRoom = (data[i][pRoom] || '').toString().trim();
-    if (isValidRoom(curRoom)) continue;
+    if (curRoom.indexOf(',') >= 0) continue;  // already multi-room, skip
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
-    if (otaVal.startsWith('SCB') && notesVal.startsWith('↳')) continue;  // skip sub-rows only; total rows still need room fix
+    if (otaVal.startsWith('SCB') && notesVal.startsWith('↳')) continue;  // skip sub-rows
     var bid  = (data[i][pBid]  || '').toString().trim();
     var conf = (data[i][pConf] || '').toString().trim();
+    var guest = (data[i][pGuest] || '').toString().trim();
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
-      if (!matched && fix.conf && conf && conf === fix.conf) matched = true;
-      if (!matched && fix.bid  && bid  && bid  === fix.bid)  matched = true;
-      var guest = (data[i][pGuest] || '').toString().trim();
+      if (!matched && fix.conf  && conf  && conf  === fix.conf)  matched = true;
+      if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
-      if (matched) {
-        paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
-        data[i][pRoom] = fix.room;
-        fixed++;
-        Logger.log('applyManualRoomFixes: row '+(i+2)+' conf="'+conf+'" bid="'+bid+'" → '+fix.room);
-        break;
-      }
+      if (!matched) continue;
+      // only overwrite if: room is invalid, OR fix.room is multi-room (more specific)
+      var isMultiFix = fix.room.indexOf(',') >= 0;
+      if (isValidRoom(curRoom) && !isMultiFix) continue;
+      paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
+      data[i][pRoom] = fix.room;
+      fixed++;
+      Logger.log('applyManualRoomFixes: row '+(i+2)+' bid="'+bid+'" → '+fix.room);
+      break;
     }
   }
   Logger.log('applyManualRoomFixes: ' + fixed + ' rows fixed');
