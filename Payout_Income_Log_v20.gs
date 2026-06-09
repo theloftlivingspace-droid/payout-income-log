@@ -1010,29 +1010,64 @@ function rebuildBankLedger() {
     blSheet.getRange(2,10,keepRows.length,3).setNumberFormat('#,##0.00');
   }
 
+  // ── Summary: monthly breakdown by OTA (parsed from status) ──
   var sr=keepRows.length+3;
-  blSheet.getRange(sr,1,1,4).merge()
-    .setValue('สรุปยอดรายรับ Bank Ledger')
+  // header
+  blSheet.getRange(sr,1,1,5).merge()
+    .setValue('สรุปยอดรายรับ Bank Ledger (แยกรายเดือน)')
     .setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold').setFontSize(11);
   sr++;
-  var totals={},grand=0;
+  blSheet.getRange(sr,1).setValue('เดือน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,2).setValue('OTA').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,3).setValue('ยอดรวม (THB)').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,4).setValue('จำนวน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  sr++;
+
+  // group by month + OTA
+  var monthly={}, months=[], otas=[];
   keepRows.forEach(function(row){
-    var ota=(row[C.ota-1]||'').toString();
-    var net=parseAmt(row[C.net-1]);
-    var key=ota.startsWith('SCB')?'✅ SCB matched':ota;
-    totals[key]=(totals[key]||0)+net; grand+=net;
+    var dt=row[C.date-1];
+    var status=(row[C.status-1]||'').toString();
+    var amt=parseAmt(row[C.net-1]);
+    // extract OTA from status: "✅ Matched - Airbnb" → "Airbnb"
+    var otaMatch=status.match(/Matched\s*-\s*(.+)$/);
+    var ota=otaMatch?otaMatch[1].trim():'SCB';
+    var d=dt instanceof Date?dt:new Date(dt);
+    var mKey=isNaN(d)?'Unknown':(d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2));
+    var key=mKey+'||'+ota;
+    if (!monthly[key]) { monthly[key]={amt:0,count:0,month:mKey,ota:ota}; }
+    monthly[key].amt+=amt; monthly[key].count++;
+    if (months.indexOf(mKey)===-1) months.push(mKey);
+    if (otas.indexOf(ota)===-1) otas.push(ota);
   });
-  Object.keys(totals).sort().forEach(function(k){
-    var v=totals[k];
-    var bg=k.startsWith('✅')?'#e8f5e9':k.startsWith('⚠️')?'#fff3e0':'#f0f8ff';
-    blSheet.getRange(sr,1).setValue(k).setBackground(bg);
-    blSheet.getRange(sr,2).setValue(v).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground(bg);
-    blSheet.getRange(sr,3).setValue('THB').setBackground(bg);
+  months.sort();
+
+  var grand=0, grandCount=0;
+  var monthBgs=['#f5f5f5','#ffffff'];
+  months.forEach(function(m,mi){
+    var bg=monthBgs[mi%2];
+    var monthTotal=0, monthCount=0;
+    otas.sort().forEach(function(ota){
+      var d=monthly[m+'||'+ota];
+      if (!d) return;
+      blSheet.getRange(sr,1).setValue(m).setBackground(bg);
+      blSheet.getRange(sr,2).setValue(ota).setBackground(bg);
+      blSheet.getRange(sr,3).setValue(d.amt).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground(bg);
+      blSheet.getRange(sr,4).setValue(d.count).setBackground(bg);
+      monthTotal+=d.amt; monthCount+=d.count;
+      sr++;
+    });
+    // month subtotal
+    blSheet.getRange(sr,1).setValue(m+' รวม').setFontWeight('bold').setBackground('#e3f2fd');
+    blSheet.getRange(sr,3).setValue(monthTotal).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#e3f2fd');
+    blSheet.getRange(sr,4).setValue(monthCount).setFontWeight('bold').setBackground('#e3f2fd');
+    grand+=monthTotal; grandCount+=monthCount;
     sr++;
   });
-  blSheet.getRange(sr,1).setValue('💰 รวม NET').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,2).setValue(grand).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,3).setValue('THB').setFontWeight('bold').setBackground('#c8e6c9');
+  // grand total
+  blSheet.getRange(sr,1).setValue('💰 รวมทั้งหมด').setFontWeight('bold').setBackground('#c8e6c9');
+  blSheet.getRange(sr,3).setValue(grand).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#c8e6c9');
+  blSheet.getRange(sr,4).setValue(grandCount).setFontWeight('bold').setBackground('#c8e6c9');
   Logger.log('rebuildBankLedger: '+keepRows.length+' rows');
   ss.setActiveSheet(blSheet);
 }
