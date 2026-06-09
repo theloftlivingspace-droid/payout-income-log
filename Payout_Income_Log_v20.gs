@@ -956,14 +956,7 @@ function applyManualRoomFixes() {
   var pGuest = pH.indexOf('ชื่อแขก');
 
   var fixed = 0;
-  // DEBUG: find target row
-  Logger.log('pBid='+pBid+' pRoom='+pRoom+' pOTA='+pOTA+' pConf='+pConf);
-  for (var di = 0; di < data.length; di++) {
-    var dBid = (data[di][pBid] || '').toString().trim();
-    if (dBid.indexOf('7648') >= 0) {
-      Logger.log('FOUND row '+(di+2)+' bid="'+dBid+'" room="'+(data[di][pRoom]||'')+'" conf="'+(data[di][pConf]||'')+'"');
-    }
-  }
+
   for (var i = 0; i < data.length; i++) {
     var curRoom = (data[i][pRoom] || '').toString().trim();
     if (curRoom.indexOf(',') >= 0) continue;  // already multi-room, skip
