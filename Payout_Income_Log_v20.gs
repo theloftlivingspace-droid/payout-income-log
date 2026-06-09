@@ -2224,3 +2224,45 @@ function matchSCBtoOTA(sheet) {
   });
   Logger.log('matchSCBtoOTA: done');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// runAirbnbEmailParse — fetch + parse Airbnb payout emails → upsert rows
+// ═══════════════════════════════════════════════════════════════
+function runAirbnbEmailParse() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  var rows = fetchAirbnbPayouts();
+  Logger.log('runAirbnbEmailParse: fetched '+rows.length+' Airbnb rows from email');
+  if (!rows.length) { Logger.log('ไม่พบ payout email ใหม่'); return; }
+
+  var last = sheet.getLastRow();
+  var existing = last > 1 ? sheet.getRange(2,1,last-1,HEADERS.length).getValues() : [];
+  var existingConfs = {};
+  var existingBids  = {};
+  existing.forEach(function(r) {
+    var c = (r[C.conf-1]||'').toString().trim();
+    var b = (r[C.bid-1] ||'').toString().trim();
+    if (c) existingConfs[c] = true;
+    if (b) existingBids[b]  = true;
+  });
+
+  var added = 0;
+  rows.forEach(function(r) {
+    var conf = (r.confCode   ||'').toString().trim();
+    var bid  = (r.bookingId  ||'').toString().trim();
+    if (existingConfs[conf] || existingBids[bid]) {
+      Logger.log('skip dup: '+conf+' / '+bid);
+      return;
+    }
+    sheet.appendRow([
+      r.date, r.ota, r.bookingId, r.confCode,
+      r.guest, r.room, r.checkIn, r.checkOut, r.nights,
+      r.total, r.commission, r.net, r.status, r.notes
+    ]);
+    existingConfs[conf] = true;
+    existingBids[bid]   = true;
+    added++;
+    Logger.log('added: '+conf+' | '+r.guest+' | net='+r.net);
+  });
+  Logger.log('runAirbnbEmailParse: '+added+' rows added');
+}
