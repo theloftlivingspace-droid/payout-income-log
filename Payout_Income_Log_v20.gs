@@ -898,6 +898,43 @@ function applyManualRoomFixes() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// AUDIT — ตรวจสอบความถูกต้องของข้อมูลใน Payout_Income_Log + Bank_Ledger
+// ═══════════════════════════════════════════════════════════════
+function auditSheet() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  ['Payout_Income_Log','Bank_Ledger'].forEach(function(tabName) {
+    var sh = ss.getSheetByName(tabName);
+    if (!sh) { Logger.log(tabName + ': NOT FOUND'); return; }
+    var last = sh.getLastRow();
+    if (last < 2) { Logger.log(tabName + ': empty'); return; }
+    var data = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
+    var noRoom = 0, noGuest = 0, noCI = 0, noCO = 0;
+    data.forEach(function(r, i) {
+      var ota   = (r[C.ota-1]   || '').toString().trim();
+      var bid   = (r[C.bid-1]   || '').toString().trim();
+      var guest = (r[C.guest-1] || '').toString().trim();
+      var room  = (r[C.room-1]  || '').toString().trim();
+      var ci    = (r[C.ci-1]    || '').toString().trim();
+      var co    = (r[C.co-1]    || '').toString().trim();
+      var notes = (r[C.notes-1] || '').toString().trim();
+      if (ota.startsWith('SCB') && notes.startsWith('↳')) return; // skip sub-rows
+      if (!room || room === '?') {
+        noRoom++;
+        Logger.log('[NO ROOM] '+tabName+' row '+(i+2)+' | '+ota+' | guest:"'+guest+'" | bid:'+bid);
+      }
+      if (!guest) noGuest++;
+      if (!ci && !ota.startsWith('SCB')) noCI++;
+      if (!co && !ota.startsWith('SCB')) noCO++;
+    });
+    Logger.log('── '+tabName+' SUMMARY ('+data.length+' rows) ──');
+    Logger.log('  ห้อง ? / ว่าง : ' + noRoom);
+    Logger.log('  ไม่มีชื่อแขก   : ' + noGuest);
+    Logger.log('  ไม่มี check-in : ' + noCI);
+    Logger.log('  ไม่มี check-out: ' + noCO);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REBUILD BANK_LEDGER
 // ═══════════════════════════════════════════════════════════════
 function rebuildBankLedger() {
