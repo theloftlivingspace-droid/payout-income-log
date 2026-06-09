@@ -2278,5 +2278,10 @@ function runAirbnbEmailParse() {
     added++;
     Logger.log('added: '+conf+' | '+r.guest+' | net='+r.net);
   });
+  if (added > 0) {
+    matchRoomFromSheet1();
+    applyManualRoomFixes();
+    sortPayoutByOTA(sheet);
+  }
   Logger.log('runAirbnbEmailParse: '+added+' rows added');
 }
