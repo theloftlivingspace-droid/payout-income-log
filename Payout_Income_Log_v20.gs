@@ -71,6 +71,8 @@ var MANUAL_ROOM_FIXES = [
   { bid:'1539361352649181', room:'203' },  // RAI/ROMAN
   { bid:'1578947342348802', room:'103' },  // SU MYAT/AUNG
   { bid:'1622927451953412', room:'103' },  // Rattanabamrung/Araya
+  // ── Guest name fallback (SCB rows ที่ไม่มี conf/bid) ────────
+  { guest:'Harley Bowman', room:'363' },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -880,6 +882,8 @@ function applyManualRoomFixes() {
       var matched = false;
       if (!matched && fix.conf && conf && conf === fix.conf) matched = true;
       if (!matched && fix.bid  && bid  && bid  === fix.bid)  matched = true;
+      var guest = (data[i][pGuest] || '').toString().trim();
+      if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (matched) {
         paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
         data[i][pRoom] = fix.room;
@@ -1523,3 +1527,4 @@ function debugUnresolvedRooms(){
   });
   Logger.log('Total unresolved rooms: '+count);
 }
+
