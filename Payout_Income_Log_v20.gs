@@ -883,7 +883,7 @@ function applyManualRoomFixes() {
     if (isValidRoom(curRoom)) continue;
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
-    if (otaVal.startsWith('SCB') && (notesVal.startsWith('✅') || notesVal.startsWith('↳'))) continue;
+    if (otaVal.startsWith('SCB') && notesVal.startsWith('↳')) continue;  // skip sub-rows only; total rows still need room fix
     var bid  = (data[i][pBid]  || '').toString().trim();
     var conf = (data[i][pConf] || '').toString().trim();
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
