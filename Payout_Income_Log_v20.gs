@@ -92,6 +92,7 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HM29NH5XYT', room:'103' },  // Nick Laschet / Airbnb (Jun)
   { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
+  { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
@@ -829,8 +830,18 @@ function matchRoomFromSheet1() {
     }
 
     var curRoom=(pr[pR]||'').toString().trim();
-    if (isValidRoom(curRoom)) continue;
     if (curRoom.indexOf(',') >= 0) continue;  // skip multi-room already set
+    // allow overwrite single room only if fix.room is multi-room
+    var fix_candidate = null;
+    for (var fi2 = 0; fi2 < MANUAL_ROOM_FIXES.length; fi2++) {
+      var fx = MANUAL_ROOM_FIXES[fi2];
+      var bid2  = (data[i][pBid]  || '').toString().trim();
+      var conf2 = (data[i][pConf] || '').toString().trim();
+      if ((fx.bid && bid2 === fx.bid) || (fx.conf && conf2 === fx.conf)) {
+        fix_candidate = fx; break;
+      }
+    }
+    if (isValidRoom(curRoom) && !(fix_candidate && fix_candidate.room.indexOf(',') >= 0)) continue;
     var guestRaw=(pr[pG]||'').toString().trim();
     if (!guestRaw||/^(รอ match)$/i.test(guestRaw)) continue;
     var ci=pr[pCI]?new Date(pr[pCI]):null;
