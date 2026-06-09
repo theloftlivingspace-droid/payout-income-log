@@ -71,8 +71,16 @@ var MANUAL_ROOM_FIXES = [
   { bid:'1539361352649181', room:'203' },  // RAI/ROMAN
   { bid:'1578947342348802', room:'103' },  // SU MYAT/AUNG
   { bid:'1622927451953412', room:'103' },  // Rattanabamrung/Araya
-  // ── Guest name fallback (SCB rows ที่ไม่มี conf/bid) ────────
-  { guest:'Harley Bowman', room:'363' },
+  // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
+  { guest:'Harley Bowman',                     room:'363' },  // Mycondo
+  { guest:'Hélèm Saouchi',                     room:'363' },  // conf HMP9HW25EN
+  { guest:'Hélèm Saouchi, Aiman Hamizan',      room:'363' },  // batch 363+203
+  { guest:'Cristina P',                        room:'214' },  // conf HMZJN29RZ5
+  { guest:'妘芮 林, Avto Dagdelen',             room:'103' },  // batch 103+203
+  { guest:'Siren Wills, Avto Dagdelen',         room:'203' },  // conf HMNNRSRWEK
+  { guest:'SM Muhaimen',                        room:'203' },  // conf HMTQJXECS9 (cancel)
+  { guest:'妘芮 林',                             room:'103' },  // standalone
+  { guest:'Siren Wills',                        room:'203' },  // standalone
 ];
 
 // ═══════════════════════════════════════════════════════════════
