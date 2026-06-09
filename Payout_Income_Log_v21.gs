@@ -183,6 +183,7 @@ function fullRebuild() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
+  fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   rebuildBankLedger();
 
@@ -203,6 +204,7 @@ function rematch() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
+  fillMissingCiCoFromEmail();
   exportToGitHub();
   SpreadsheetApp.getActiveSpreadsheet().toast('Rematch เสร็จ | GitHub synced', 'Done', 3);
 }
@@ -2412,6 +2414,61 @@ function runAirbnbEmailParse() {
     sortPayoutByOTA(sheet);
   }
   Logger.log('runAirbnbEmailParse: '+added+' rows added');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILL MISSING CI/CO FROM AIRBNB EMAIL
+// ═══════════════════════════════════════════════════════════════
+function fillMissingCiCoFromEmail() {
+  var ss        = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet     = ss.getSheetByName(TAB_NAME);
+  var data      = sheet.getDataRange().getValues();
+  var h         = data[0].map(function(v){ return v.toString().trim(); });
+  var pOTA  = h.indexOf('OTA');
+  var pConf = h.indexOf('Conf. Code');
+  var pCI   = h.indexOf('เช็คอิน');
+  var pCO   = h.indexOf('เช็คเอาท์');
+  var pN    = h.indexOf('คืน');
+
+  // Build map: confCode -> {ci, co} from all Airbnb payout emails
+  var emailMap = {};
+  var threads = GmailApp.search(
+    'from:automated@airbnb.com subject:"sent a payout" after:2026/01/01', 0, 200
+  );
+  threads.forEach(function(t) {
+    t.getMessages().forEach(function(m) {
+      try {
+        var rows = parseAirbnbEmail(m);
+        rows.forEach(function(r) {
+          var conf = (r.confCode || '').toString().trim();
+          if (conf && r.checkIn && r.checkOut && !emailMap[conf]) {
+            emailMap[conf] = { ci: r.checkIn, co: r.checkOut, nights: r.nights || nightsBetween(r.checkIn, r.checkOut) };
+          }
+        });
+      } catch(e) { Logger.log('fillMissingCiCo email err: ' + e.message); }
+    });
+  });
+  Logger.log('fillMissingCiCoFromEmail: email map built, ' + Object.keys(emailMap).length + ' confs');
+
+  var updated = 0;
+  for (var i = 1; i < data.length; i++) {
+    var row  = data[i];
+    var ota  = (row[pOTA] || '').toString().trim();
+    if (ota !== 'Airbnb') continue;
+    var ci   = row[pCI];
+    var co   = row[pCO];
+    if (ci && co) continue; // already has ci/co
+    var conf = (row[pConf] || '').toString().trim();
+    if (!conf) continue;
+    var info = emailMap[conf];
+    if (!info) continue;
+    sheet.getRange(i + 1, pCI + 1).setValue(info.ci);
+    sheet.getRange(i + 1, pCO + 1).setValue(info.co);
+    if (!row[pN]) sheet.getRange(i + 1, pN + 1).setValue(info.nights);
+    updated++;
+    Logger.log('fillMissingCiCo: filled conf=' + conf + ' ci=' + info.ci + ' co=' + info.co);
+  }
+  Logger.log('fillMissingCiCoFromEmail: ' + updated + ' rows filled');
 }
 
 // ═══════════════════════════════════════════════════════════════
