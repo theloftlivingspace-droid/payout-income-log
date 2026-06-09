@@ -71,6 +71,23 @@ var MANUAL_ROOM_FIXES = [
   { bid:'1539361352649181', room:'203' },  // RAI/ROMAN
   { bid:'1578947342348802', room:'103' },  // SU MYAT/AUNG
   { bid:'1622927451953412', room:'103' },  // Rattanabamrung/Araya
+  // ── SCB rows match ด้วย bid (ยืนยันจาก invoice) ────────────
+  { bid:'SCB-2026-03-04-18195.32', room:'300' },  // Shaokun Zhang / Expedia
+  { bid:'SCB-2026-03-04-997.34',   room:'214' },  // Gabriel Carletto / Airbnb
+  { bid:'SCB-2026-03-05-3230.22',  room:'300' },  // Jake Burke / Trip.com
+  { bid:'SCB-2026-03-12-1396.26',  room:'113' },  // Songwut Heraphiwatthana / Expedia
+  { bid:'SCB-2026-03-21-15105.30', room:'363' },  // Hélèm Saouchi / Airbnb
+  { bid:'SCB-2026-03-27-1826.72',  room:'204' },  // Sarina Javid Osborne / Trip.com
+  { bid:'SCB-2026-03-30-13497.52', room:'205' },  // Amir Hayes / Airbnb
+  { bid:'SCB-2026-04-02-1923.36',  room:'300' },  // 辉 宫 Gong Hui / Airbnb
+  { bid:'SCB-2026-04-07-980.93',   room:'203' },  // ALLARD Angélique / booking.com
+  { bid:'SCB-2026-04-07-2126.89',  room:'300' },  // 辉 宫 Gong Hui / Airbnb
+  { bid:'SCB-2026-04-09-2201.90',  room:'300' },  // 辉 宫 Gong Hui / Airbnb
+  { bid:'SCB-2026-04-17-4823.58',  room:'113' },  // Ngân Nguyễn Thị / Airbnb
+  { bid:'SCB-2026-04-21-943.21',   room:'300' },  // 辉 宫 Gong Hui / Airbnb
+  { bid:'SCB-2026-05-16-1169.49',  room:'108' },  // Dave Casey / Airbnb
+  { bid:'SCB-2026-05-26-1423.79',  room:'103' },  // Natthaphon Pakhothanang / booking
+  { bid:'SCB-2026-05-31-2996.07',  room:'113' },  // Eiji Uenaka / Airbnb
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
   { guest:'Hélèm Saouchi',                     room:'363' },  // conf HMP9HW25EN
