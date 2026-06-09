@@ -92,7 +92,8 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HM29NH5XYT', room:'103' },  // Nick Laschet / Airbnb (Jun)
   { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
-  { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
+  { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
+  { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
@@ -921,7 +922,9 @@ function syncSCBTotalRooms() {
         if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
         j++;
       }
-      if (rooms.length > 1) {
+      // only update if we actually found sub-rows (j > i+1) AND got more rooms
+      var hadSubRows = (j > i + 1);
+      if (hadSubRows && rooms.length > 1) {
         var merged = rooms.join(', ');
         if (merged !== totalRoom) {
           sheet.getRange(i+2, pRoom+1).setValue(merged);
@@ -959,7 +962,15 @@ function applyManualRoomFixes() {
 
   for (var i = 0; i < data.length; i++) {
     var curRoom = (data[i][pRoom] || '').toString().trim();
-    if (curRoom.indexOf(',') >= 0) continue;  // already multi-room, skip
+    // skip multi-room only if NOT in MANUAL_ROOM_FIXES (fixes can reset bad multi-room)
+    if (curRoom.indexOf(',') >= 0) {
+      var bid_  = (data[i][pBid]  || '').toString().trim();
+      var conf_ = (data[i][pConf] || '').toString().trim();
+      var inFixes = MANUAL_ROOM_FIXES.some(function(fx){
+        return (fx.bid && fx.bid===bid_) || (fx.conf && fx.conf===conf_);
+      });
+      if (!inFixes) continue;
+    }
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
     if (otaVal.startsWith('SCB') && notesVal.startsWith('↳')) continue;  // skip sub-rows
