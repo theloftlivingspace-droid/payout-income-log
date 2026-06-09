@@ -52,11 +52,11 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMNHWSPHPT', room:'214' },  // Poonchanok Gramut
   { conf:'HMZJN29RZ5', room:'214' },  // Cristina P
   { conf:'HMRFAMDAXW', room:'113' },  // Dick Blom
-  { conf:'HM3A89NS8M', room:'214' },  // Josh Cadle
+  { conf:'HM3A89NS8M', bid:'SCB-2026-03-08-3923.90', room:'214' },  // Josh Cadle
   { conf:'HM529FX8QH', room:'214' },  // Gabriel Carletto
-  { conf:'HMMWTMN5QS', room:'113' },  // Lona Lee
+  { conf:'HMMWTMN5QS', bid:'SCB-2026-03-05-900.00', room:'113' },  // Lona Lee
   { conf:'HMCBAE24X2', room:'214' },  // Gabriel Carletto
-  { conf:'HMDKRWE9ST', room:'214' },  // Laurent Pierre Noguer
+  { conf:'HMDKRWE9ST', bid:'SCB-2026-04-14-4314.50', room:'214' },  // Laurent Pierre Noguer
   { conf:'HMXS5X9J9T', room:'214' },  // May Zin
   { conf:'HMM2YXSJXC', room:'113' },  // Hasan Workman
   { conf:'HMTF5QWZ38', room:'113' },  // Keegan Jacinto
