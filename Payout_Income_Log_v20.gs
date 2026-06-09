@@ -956,6 +956,17 @@ function applyManualRoomFixes() {
   var pGuest = pH.indexOf('ชื่อแขก');
 
   var fixed = 0;
+  // DEBUG: log first 5 SCB rows to verify bid values
+  var debugCount = 0;
+  for (var di = 0; di < data.length && debugCount < 5; di++) {
+    var dOTA = (data[di][pOTA] || '').toString().trim();
+    if (!dOTA.startsWith('SCB')) continue;
+    var dBid  = (data[di][pBid]  || '').toString().trim();
+    var dRoom = (data[di][pRoom] || '').toString().trim();
+    var dNotes= (data[di][pNotes]|| '').toString().trim();
+    Logger.log('SCB row '+(di+2)+' | bid="'+dBid+'" | room="'+dRoom+'" | notes="'+dNotes.substring(0,30)+'"');
+    debugCount++;
+  }
   for (var i = 0; i < data.length; i++) {
     var curRoom = (data[i][pRoom] || '').toString().trim();
     if (curRoom.indexOf(',') >= 0) continue;  // already multi-room, skip
