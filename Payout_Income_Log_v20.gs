@@ -123,6 +123,30 @@ var AIRBNB_EXTENSIONS = {
   'HM9X2AW3R3': true  // Eiji Uenaka — extension payout
 };
 
+
+// ═══════════════════════════════════════════════════════════════
+// BOOKING_COM_SCB_MAP — map SCB transfer → Booking.com booking IDs
+// เพิ่มเมื่อรู้ว่า SCB ไหนเป็น Booking.com (เพราะ email ไม่บอก sender)
+// net ของแต่ละ booking จะถูก calculate จาก:
+//   simple: prepaid - payment_charge - commission - VAT7%(charge+comm)
+//   complex: ระบุ net ตรงๆ ใน netOverride
+// ═══════════════════════════════════════════════════════════════
+var BOOKING_COM_SCB_MAP = [
+  // { scbId: 'SCB-2026-04-02-980.93', bids: ['6148157193'] },            // ALLARD Angélique
+  // { scbId: 'SCB-2026-05-26-1423.79', bids: ['6339174127'] },           // Natthaphon
+  // { scbId: 'SCB-YYYY-MM-DD-AMOUNT', bids: ['BID1','BID2'], nets: ['NET1','NET2'] },  // multi
+];
+
+// ═══════════════════════════════════════════════════════════════
+// calcBookingComNet — คำนวณ net payout จาก LH email fields
+// ใช้ได้กับ simple bookings (prepaid = gross)
+// fields: prepaid, payment_charge, commission (จาก parseLHEmail)
+// ═══════════════════════════════════════════════════════════════
+function calcBookingComNet(prepaid, paymentCharge, commission) {
+  var vat = Math.round((paymentCharge + commission) * 0.07 * 100) / 100;
+  return Math.round((prepaid - paymentCharge - commission - vat) * 100) / 100;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ENTRY POINTS
 // ═══════════════════════════════════════════════════════════════
@@ -150,6 +174,7 @@ function fullRebuild() {
 
   unique.forEach(function(r){ appendRow(sheet, r); });
   matchSCBtoOTA(sheet);
+  matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -167,6 +192,7 @@ function rematch() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
   matchSCBtoOTA(sheet);
+  matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -198,6 +224,7 @@ function dailyEmailSync() {
 
   newRows.forEach(function(r){ appendRow(sheet,r); });
   matchSCBtoOTA(sheet);
+  matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -642,54 +669,6 @@ function matchSCBtoOTA(sheet) {
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
       delete expediaNets[expKeys[ei]]; return;
-    }
-
-    // ── Booking.com: match by checkout window (net จาก email ไม่ตรงกับที่โอนจริง) ──
-    // Booking.com โอน monthly batch รวม bookings ที่ checkout ก่อน SCB date
-    // window: checkout อยู่ระหว่าง (scbDate - 45 วัน) ถึง (scbDate - 1 วัน)
-    var bkCandidates = [];
-    data.forEach(function(row2) {
-      var ota2=(row2[C.ota-1]||'').toString().trim();
-      if (ota2!=='Booking.com') return;
-      var status2=(row2[C.status-1]||'').toString();
-      if (status2.indexOf('✅')===0||status2.indexOf('Matched')>=0) return;
-      var co2=row2[C.co-1];
-      if (!co2) return;
-      var coDate=co2 instanceof Date?co2:new Date(co2);
-      if (isNaN(coDate)) return;
-      var coStr=Utilities.formatDate(coDate,'Asia/Bangkok','yyyy-MM-dd');
-      var scbD=new Date(scbDate);
-      var diffDays=Math.round((scbD-coDate)/86400000);
-      // checkout ต้องอยู่ก่อน SCB date และไม่เกิน 45 วัน
-      if (diffDays>=1&&diffDays<=45) {
-        bkCandidates.push({
-          bid:(row2[C.bid-1]||'').toString().trim(),
-          guest:(row2[C.guest-1]||'').toString().trim(),
-          net:fmtAmt(row2[C.net-1]),
-          co:coStr
-        });
-      }
-    });
-    if (bkCandidates.length>0) {
-      // sort by checkout date ascending
-      bkCandidates.sort(function(a,b){return a.co.localeCompare(b.co);});
-      var bkNetSum=0;
-      bkCandidates.forEach(function(c){bkNetSum+=parseAmt(c.net);});
-      // ใช้ SCB amount เป็น net จริง (Booking.com หัก fees เพิ่มที่ไม่รู้จาก email)
-      // กระจาย SCB amount ตาม proportion ของ net แต่ละ booking
-      var bkNetsAdjusted=bkCandidates.map(function(c){
-        var prop=bkNetSum>0?parseAmt(c.net)/bkNetSum:1/bkCandidates.length;
-        return (parseAmt(scbAmt)*prop).toFixed(2);
-      });
-      replacements.push({deleteRow:i+2,
-        insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
-          bkCandidates.map(function(c){return c.bid;}),
-          bkCandidates.map(function(c){return c.guest;}),
-          bkNetsAdjusted,
-          {},detailByBid,'Booking.com remittance')});
-      // mark booking.com rows as matched in detailByBid to avoid re-use
-      bkCandidates.forEach(function(c){delete detailByBid[c.bid];});
-      return;
     }
   });
 
@@ -1576,6 +1555,98 @@ function getDashboardData(){
     .setMimeType(ContentService.MimeType.JSON);
 }
 function getDashboardDataAsString(){ return getDashboardData().getContent(); }
+
+
+// ═══════════════════════════════════════════════════════════════
+// matchBookingComSCB — match SCB rows → Booking.com via BOOKING_COM_SCB_MAP
+// รัน after matchSCBtoOTA (จะไม่ re-match rows ที่มี ✅ แล้ว)
+// ═══════════════════════════════════════════════════════════════
+function matchBookingComSCB() {
+  if (!BOOKING_COM_SCB_MAP.length) return;
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return;
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last-1, HEADERS.length).getValues();
+
+  // index SCB rows by bid
+  var scbIndex = {};
+  data.forEach(function(row, i) {
+    var ota = (row[C.ota-1]||'').toString().trim();
+    if (!ota.startsWith('SCB')) return;
+    var bid = (row[C.bid-1]||'').toString().trim();
+    scbIndex[bid] = { rowIdx: i, notes: (row[C.notes-1]||'').toString() };
+  });
+
+  // index Booking.com rows by bid
+  var bkIndex = {};
+  data.forEach(function(row, i) {
+    if ((row[C.ota-1]||'').toString().trim() !== 'Booking.com') return;
+    var bid = (row[C.bid-1]||'').toString().trim();
+    bkIndex[bid] = {
+      guest:  (row[C.guest-1]||'').toString().trim(),
+      net:    fmtAmt(row[C.net-1]),
+      ci:     row[C.ci-1],
+      co:     row[C.co-1],
+      nights: row[C.nights-1],
+      room:   (row[C.room-1]||'').toString().trim()
+    };
+  });
+
+  var matched = 0;
+  BOOKING_COM_SCB_MAP.forEach(function(entry) {
+    var scb = scbIndex[entry.scbId];
+    if (!scb) { Logger.log('matchBookingComSCB: SCB not found: ' + entry.scbId); return; }
+    if (scb.notes.indexOf('✅') === 0) { Logger.log('matchBookingComSCB: already matched: ' + entry.scbId); return; }
+
+    var scbRow  = data[scb.rowIdx];
+    var scbAmt  = fmtAmt(scbRow[C.net-1]);
+    var scbDate = dateStr(scbRow[C.date-1]);
+    var scbOTA  = (scbRow[C.ota-1]||'').toString();
+    var scbBid  = (scbRow[C.bid-1]||'').toString().trim();
+    var acctM   = scb.notes.match(/x[\dX]+/);
+    var scbAcct = acctM ? acctM[0] : 'x256221';
+
+    var bids   = entry.bids;
+    var guests = bids.map(function(b) { return bkIndex[b] ? bkIndex[b].guest : '?'; });
+    // ใช้ nets จาก map ถ้าระบุ, ไม่งั้นใช้ net จาก sheet
+    var nets   = entry.nets
+      ? entry.nets.map(String)
+      : bids.map(function(b) { return bkIndex[b] ? bkIndex[b].net : '0'; });
+
+    var detailByBid = {};
+    bids.forEach(function(b) { if (bkIndex[b]) detailByBid[b] = bkIndex[b]; });
+
+    var insertRows = buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
+      bids, guests, nets, {}, detailByBid, 'Booking.com remittance');
+
+    var sr = scb.rowIdx + 2;
+    sheet.deleteRow(sr);
+    insertRows.forEach(function(r, idx) {
+      sheet.insertRowBefore(sr + idx);
+      sheet.getRange(sr+idx, 1, 1, HEADERS.length).setValues([[
+        r.date, r.ota, r.bookingId, r.confCode,
+        r.guest, r.room, r.checkIn, r.checkOut, r.nights,
+        r.total, r.commission, r.net, r.status, r.notes
+      ]]);
+      var bg = (r._isTotal || r._isSingle) ? SCB_TOTAL_BG : SCB_SUB_BG;
+      sheet.getRange(sr+idx, 1, 1, HEADERS.length).setBackground(bg);
+      if (r._isTotal || r._isSingle) {
+        sheet.getRange(sr+idx, 1, 1, HEADERS.length).setFontWeight('bold');
+      } else {
+        sheet.getRange(sr+idx, 1, 1, HEADERS.length)
+          .setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
+      }
+      sheet.getRange(sr+idx, 10, 1, 3).setNumberFormat('#,##0.00');
+    });
+    matched++;
+    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', '));
+  });
+  Logger.log('matchBookingComSCB: ' + matched + ' SCB rows matched');
+  if (matched > 0) SpreadsheetApp.getActiveSpreadsheet()
+    .toast('Booking.com match: ' + matched + ' รายการ', 'Done', 4);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
