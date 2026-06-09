@@ -984,11 +984,11 @@ function rebuildBankLedger() {
     var ota  =(row[C.ota-1]  ||'').toString().trim();
     var notes=(row[C.notes-1]||'').toString().trim();
     var bid  =(row[C.bid-1]  ||'').toString().trim();
-    if (ota==='Airbnb') return;                               // exclude Airbnb
-    if (ota.startsWith('SCB')&&notes.startsWith('↳')) return; // exclude SCB sub-rows
-    if (ota.startsWith('SCB')&&notes.startsWith('✅')) return; // exclude SCB total rows
-    if (!ota) return;                                          // exclude blank/empty rows
-    if (bid==='THB' || /^\d/.test(ota)) return;              // exclude summary/footer rows
+    if (ota==='Airbnb') return;                                // exclude Airbnb
+    if (ota.startsWith('SCB')&&notes.startsWith('↳')) return;  // exclude SCB sub-rows
+    if (ota.startsWith('SCB')&&!notes.startsWith('✅')) return; // exclude SCB unmatched (รอ match)
+    if (!ota) return;                                           // exclude blank/empty rows
+    if (bid==='THB' || /^\d/.test(ota)) return;               // exclude summary/footer rows
     keepRows.push(row); keepFmts.push(srcFmts[i]);
   });
 
@@ -1018,9 +1018,7 @@ function rebuildBankLedger() {
   keepRows.forEach(function(row){
     var ota=(row[C.ota-1]||'').toString();
     var net=parseAmt(row[C.net-1]);
-    var key=ota.startsWith('SCB')
-      ?(row[C.status-1]||'').toString().indexOf('✅')===0?'✅ SCB matched':'⚠️ รอ match'
-      :ota;
+    var key=ota.startsWith('SCB')?'✅ SCB matched':ota;
     totals[key]=(totals[key]||0)+net; grand+=net;
   });
   Object.keys(totals).sort().forEach(function(k){
