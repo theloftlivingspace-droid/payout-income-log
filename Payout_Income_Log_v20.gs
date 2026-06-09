@@ -964,7 +964,8 @@ function rebuildBankLedger() {
     if (ota==='Airbnb') return;                               // exclude Airbnb
     if (ota.startsWith('SCB')&&notes.startsWith('↳')) return; // exclude SCB sub-rows
     if (ota.startsWith('SCB')&&notes.startsWith('✅')) return; // exclude SCB total rows
-    if (!ota || bid==='THB') return;                          // exclude summary/footer rows
+    if (!ota) return;                                          // exclude blank/empty rows
+    if (bid==='THB' || /^\d/.test(ota)) return;              // exclude summary/footer rows
     keepRows.push(row); keepFmts.push(srcFmts[i]);
   });
 
