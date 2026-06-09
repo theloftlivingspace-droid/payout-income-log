@@ -1011,17 +1011,18 @@ function rebuildBankLedger() {
     blSheet.getRange(2,10,keepRows.length,3).setNumberFormat('#,##0.00');
   }
 
-  // ── Summary: monthly breakdown by OTA (parsed from status) ──
+  // ── Summary: monthly breakdown by OTA (parsed from status) — starts at col E=5 ──
+  var SC=5; // summary start column (E)
   var sr=keepRows.length+3;
   // header
-  blSheet.getRange(sr,1,1,5).merge()
+  blSheet.getRange(sr,SC,1,4).merge()
     .setValue('สรุปยอดรายรับ Bank Ledger (แยกรายเดือน)')
     .setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold').setFontSize(11);
   sr++;
-  blSheet.getRange(sr,1).setValue('เดือน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,2).setValue('OTA').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,3).setValue('ยอดรวม (THB)').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,4).setValue('จำนวน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,SC  ).setValue('เดือน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,SC+1).setValue('OTA').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,SC+2).setValue('ยอดรวม (THB)').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
+  blSheet.getRange(sr,SC+3).setValue('จำนวน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
   sr++;
 
   // group by month + OTA
@@ -1051,24 +1052,24 @@ function rebuildBankLedger() {
     otas.sort().forEach(function(ota){
       var d=monthly[m+'||'+ota];
       if (!d) return;
-      blSheet.getRange(sr,1).setValue(m).setBackground(bg);
-      blSheet.getRange(sr,2).setValue(ota).setBackground(bg);
-      blSheet.getRange(sr,3).setValue(d.amt).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground(bg);
-      blSheet.getRange(sr,4).setValue(d.count).setBackground(bg);
+      blSheet.getRange(sr,SC  ).setValue(m).setBackground(bg);
+      blSheet.getRange(sr,SC+1).setValue(ota).setBackground(bg);
+      blSheet.getRange(sr,SC+2).setValue(d.amt).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground(bg);
+      blSheet.getRange(sr,SC+3).setValue(d.count).setBackground(bg);
       monthTotal+=d.amt; monthCount+=d.count;
       sr++;
     });
     // month subtotal
-    blSheet.getRange(sr,1).setValue(m+' รวม').setFontWeight('bold').setBackground('#e3f2fd');
-    blSheet.getRange(sr,3).setValue(monthTotal).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#e3f2fd');
-    blSheet.getRange(sr,4).setValue(monthCount).setFontWeight('bold').setBackground('#e3f2fd');
+    blSheet.getRange(sr,SC  ).setValue(m+' รวม').setFontWeight('bold').setBackground('#e3f2fd');
+    blSheet.getRange(sr,SC+2).setValue(monthTotal).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#e3f2fd');
+    blSheet.getRange(sr,SC+3).setValue(monthCount).setFontWeight('bold').setBackground('#e3f2fd');
     grand+=monthTotal; grandCount+=monthCount;
     sr++;
   });
   // grand total
-  blSheet.getRange(sr,1).setValue('💰 รวมทั้งหมด').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,3).setValue(grand).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,4).setValue(grandCount).setFontWeight('bold').setBackground('#c8e6c9');
+  blSheet.getRange(sr,SC  ).setValue('💰 รวมทั้งหมด').setFontWeight('bold').setBackground('#c8e6c9');
+  blSheet.getRange(sr,SC+2).setValue(grand).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#c8e6c9');
+  blSheet.getRange(sr,SC+3).setValue(grandCount).setFontWeight('bold').setBackground('#c8e6c9');
   Logger.log('rebuildBankLedger: '+keepRows.length+' rows');
   ss.setActiveSheet(blSheet);
 }
