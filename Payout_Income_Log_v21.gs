@@ -1,4 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
+// Payout_Income_Log_v21.gs  (updated: exportToGitHub auto-push)
+// Changes from v20:
+//   1. exportToGitHub(): push Payout_Income_Log + Bank_Ledger JSON ขึ้น GitHub
+//   2. fullRebuild(), rematch(), dailyEmailSync() เรียก exportToGitHub() อัตโนมัติ
+// ═══════════════════════════════════════════════════════════════
 // Payout_Income_Log_v20.gs  (updated: getSheet1CiCoMap, font reset, more MANUAL_ROOM_FIXES)
 // Changes from v19:
 //   1. roomFromText(): เพิ่ม "cosy apartment", "private apartment",
@@ -181,9 +186,11 @@ function fullRebuild() {
   sortPayoutByOTA(sheet);
   rebuildBankLedger();
 
+  exportToGitHub();
+
   var msg = 'Rebuild เสร็จ: Airbnb='+airbnbRows.length+' LH='+lhRows.length+
             ' Trip='+tripRows.length+' SCB='+scbRows.length+
-            ' | Bank_Ledger updated';
+            ' | Bank_Ledger updated | GitHub synced';
   Logger.log(msg);
   SpreadsheetApp.getActiveSpreadsheet().toast(msg, 'Done', 8);
 }
@@ -196,7 +203,8 @@ function rematch() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
-  SpreadsheetApp.getActiveSpreadsheet().toast('Rematch เสร็จ', 'Done', 3);
+  exportToGitHub();
+  SpreadsheetApp.getActiveSpreadsheet().toast('Rematch เสร็จ | GitHub synced', 'Done', 3);
 }
 
 function dailyEmailSync() {
@@ -231,7 +239,8 @@ function dailyEmailSync() {
   sortPayoutByOTA(sheet);
   rebuildBankLedger();
 
-  Logger.log('daily: +'+newRows.length+' new rows | Bank_Ledger rebuilt');
+  exportToGitHub();
+  Logger.log('daily: +'+newRows.length+' new rows | Bank_Ledger rebuilt | GitHub synced');
 }
 
 function createDailyTrigger() {
@@ -2403,4 +2412,52 @@ function runAirbnbEmailParse() {
     sortPayoutByOTA(sheet);
   }
   Logger.log('runAirbnbEmailParse: '+added+' rows added');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GITHUB EXPORT
+// ═══════════════════════════════════════════════════════════════
+function exportToGitHub() {
+  var ss     = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var token  = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  var repo   = 'theloftlivingspace-droid/payout-income-log';
+  var branch = 'main';
+
+  var files = [
+    { sheet: 'Payout_Income_Log', path: 'data/payout_income_log.json' },
+    { sheet: 'Bank_Ledger',       path: 'data/bank_ledger.json'       }
+  ];
+
+  files.forEach(function(f) {
+    var sheet = ss.getSheetByName(f.sheet);
+    if (!sheet) { Logger.log('exportToGitHub: sheet not found: ' + f.sheet); return; }
+    var data    = sheet.getDataRange().getValues();
+    var json    = JSON.stringify(data);
+    var encoded = Utilities.base64Encode(json, Utilities.Charset.UTF_8);
+
+    var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/' + f.path;
+    var headers = { Authorization: 'token ' + token, 'Content-Type': 'application/json' };
+
+    // Get current SHA (ถ้าไฟล์มีอยู่แล้ว)
+    var sha = '';
+    try {
+      var getRes = UrlFetchApp.fetch(apiUrl, { headers: headers, muteHttpExceptions: true });
+      if (getRes.getResponseCode() === 200) {
+        sha = JSON.parse(getRes.getContentText()).sha;
+      }
+    } catch(e) { Logger.log('exportToGitHub SHA error: ' + e.message); }
+
+    // Push
+    var payload = { message: 'Auto-export: ' + f.sheet, content: encoded, branch: branch };
+    if (sha) payload.sha = sha;
+    try {
+      var res = UrlFetchApp.fetch(apiUrl, {
+        method: 'put',
+        headers: headers,
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      Logger.log('exportToGitHub ' + f.sheet + ': HTTP ' + res.getResponseCode());
+    } catch(e) { Logger.log('exportToGitHub push error: ' + e.message); }
+  });
 }
