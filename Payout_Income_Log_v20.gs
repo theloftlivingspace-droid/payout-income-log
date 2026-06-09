@@ -643,6 +643,54 @@ function matchSCBtoOTA(sheet) {
           b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
       delete expediaNets[expKeys[ei]]; return;
     }
+
+    // ── Booking.com: match by checkout window (net จาก email ไม่ตรงกับที่โอนจริง) ──
+    // Booking.com โอน monthly batch รวม bookings ที่ checkout ก่อน SCB date
+    // window: checkout อยู่ระหว่าง (scbDate - 45 วัน) ถึง (scbDate - 1 วัน)
+    var bkCandidates = [];
+    data.forEach(function(row2) {
+      var ota2=(row2[C.ota-1]||'').toString().trim();
+      if (ota2!=='Booking.com') return;
+      var status2=(row2[C.status-1]||'').toString();
+      if (status2.indexOf('✅')===0||status2.indexOf('Matched')>=0) return;
+      var co2=row2[C.co-1];
+      if (!co2) return;
+      var coDate=co2 instanceof Date?co2:new Date(co2);
+      if (isNaN(coDate)) return;
+      var coStr=Utilities.formatDate(coDate,'Asia/Bangkok','yyyy-MM-dd');
+      var scbD=new Date(scbDate);
+      var diffDays=Math.round((scbD-coDate)/86400000);
+      // checkout ต้องอยู่ก่อน SCB date และไม่เกิน 45 วัน
+      if (diffDays>=1&&diffDays<=45) {
+        bkCandidates.push({
+          bid:(row2[C.bid-1]||'').toString().trim(),
+          guest:(row2[C.guest-1]||'').toString().trim(),
+          net:fmtAmt(row2[C.net-1]),
+          co:coStr
+        });
+      }
+    });
+    if (bkCandidates.length>0) {
+      // sort by checkout date ascending
+      bkCandidates.sort(function(a,b){return a.co.localeCompare(b.co);});
+      var bkNetSum=0;
+      bkCandidates.forEach(function(c){bkNetSum+=parseAmt(c.net);});
+      // ใช้ SCB amount เป็น net จริง (Booking.com หัก fees เพิ่มที่ไม่รู้จาก email)
+      // กระจาย SCB amount ตาม proportion ของ net แต่ละ booking
+      var bkNetsAdjusted=bkCandidates.map(function(c){
+        var prop=bkNetSum>0?parseAmt(c.net)/bkNetSum:1/bkCandidates.length;
+        return (parseAmt(scbAmt)*prop).toFixed(2);
+      });
+      replacements.push({deleteRow:i+2,
+        insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
+          bkCandidates.map(function(c){return c.bid;}),
+          bkCandidates.map(function(c){return c.guest;}),
+          bkNetsAdjusted,
+          {},detailByBid,'Booking.com remittance')});
+      // mark booking.com rows as matched in detailByBid to avoid re-use
+      bkCandidates.forEach(function(c){delete detailByBid[c.bid];});
+      return;
+    }
   });
 
   Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand');
