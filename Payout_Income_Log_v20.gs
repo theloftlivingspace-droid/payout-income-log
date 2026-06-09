@@ -998,7 +998,8 @@ function rebuildBankLedger() {
         .setFontWeight('bold').setFontSize(10)
         .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   blSheet.setFrozenRows(1);
-  blSheet.showColumns(1, HEADERS.length);  // unhide all columns
+  blSheet.showColumns(1, HEADERS.length);  // unhide all columns first
+  [2,3,4,11].forEach(function(c){ blSheet.hideColumns(c); }); // hide OTA, Booking ID, Conf. Code, Commission
   [110,110,180,140,200,80,105,105,55,110,115,110,200,300]
     .forEach(function(w,i){ blSheet.setColumnWidth(i+1,w); });
 
