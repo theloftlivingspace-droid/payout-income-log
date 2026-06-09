@@ -927,6 +927,7 @@ function rebuildBankLedger() {
         .setFontWeight('bold').setFontSize(10)
         .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   blSheet.setFrozenRows(1);
+  blSheet.showColumns(1, HEADERS.length);  // unhide all columns
   [110,110,180,140,200,80,105,105,55,110,115,110,200,300]
     .forEach(function(w,i){ blSheet.setColumnWidth(i+1,w); });
 
@@ -1416,6 +1417,7 @@ function setupSheet(){
         .setFontWeight('bold').setFontSize(10)
         .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   sheet.setFrozenRows(1);
+  sheet.showColumns(1, HEADERS.length);  // unhide all columns
   [110,110,180,140,200,80,105,105,55,110,115,110,200,300]
     .forEach(function(w,i){sheet.setColumnWidth(i+1,w);});
   return sheet;
