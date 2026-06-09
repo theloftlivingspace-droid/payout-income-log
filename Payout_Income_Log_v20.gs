@@ -1789,3 +1789,61 @@ function syncSCBTotalRooms() {
   }
   Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// OVERRIDE: applyManualRoomFixes — allow single-room fix to override wrong multi-room
+// ═══════════════════════════════════════════════════════════════
+function applyManualRoomFixes() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var paySheet = ss.getSheetByName(TAB_NAME);
+  if (!paySheet) return;
+  var last = paySheet.getLastRow();
+  if (last < 2) return;
+
+  var data = paySheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  var pH = paySheet.getRange(1, 1, 1, HEADERS.length).getValues()[0]
+           .map(function(h) { return h.toString().trim(); });
+  var pBid   = pH.indexOf('Booking ID');
+  var pConf  = pH.indexOf('Conf. Code');
+  var pRoom  = pH.indexOf('ห้อง') >= 0 ? pH.indexOf('ห้อง') : pH.indexOf('เลขห้อง');
+  var pNotes = pH.indexOf('หมายเหตุ');
+  var pOTA   = pH.indexOf('OTA');
+  var pGuest = pH.indexOf('ชื่อแขก');
+
+  var fixed = 0;
+
+  for (var i = 0; i < data.length; i++) {
+    var notesVal = (data[i][pNotes] || '').toString().trim();
+    var otaVal   = (data[i][pOTA]   || '').toString().trim();
+    if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip sub-rows
+
+    var curRoom = (data[i][pRoom] || '').toString().trim();
+    var bid   = (data[i][pBid]   || '').toString().trim();
+    var conf  = (data[i][pConf]  || '').toString().trim();
+    var guest = (data[i][pGuest] || '').toString().trim();
+
+    for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
+      var fix = MANUAL_ROOM_FIXES[fi];
+      var matched = false;
+      if (!matched && fix.conf  && conf  && conf  === fix.conf)  matched = true;
+      if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
+      if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
+      if (!matched) continue;
+
+      var isMultiFix = fix.room.indexOf(',') >= 0;
+      var isMultiCur = curRoom.indexOf(',') >= 0;
+
+      // skip only if: current room is valid single AND fix is also single
+      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi
+      if (isValidRoom(curRoom) && !isMultiFix && !isMultiCur) continue;
+
+      if (curRoom === fix.room) break; // already correct, no write needed
+      paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
+      data[i][pRoom] = fix.room;
+      fixed++;
+      Logger.log('applyManualRoomFixes: row '+(i+2)+' bid="'+bid+'" conf="'+conf+'" '+curRoom+' → '+fix.room);
+      break;
+    }
+  }
+  Logger.log('applyManualRoomFixes: ' + fixed + ' rows fixed');
+}
