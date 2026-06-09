@@ -981,12 +981,13 @@ function rebuildBankLedger() {
 
   var keepRows=[],keepFmts=[];
   srcData.forEach(function(row,i) {
-    var ota  =(row[C.ota-1]  ||'').toString().trim();
-    var notes=(row[C.notes-1]||'').toString().trim();
-    var bid  =(row[C.bid-1]  ||'').toString().trim();
+    var ota   =(row[C.ota-1]   ||'').toString().trim();
+    var notes =(row[C.notes-1] ||'').toString().trim();
+    var status=(row[C.status-1]||'').toString().trim();
+    var bid   =(row[C.bid-1]   ||'').toString().trim();
     if (!ota.startsWith('SCB')) return;                         // SCB only
     if (notes.startsWith('↳')) return;                         // exclude SCB sub-rows
-    if (!notes.startsWith('✅')) return;                        // exclude SCB unmatched
+    if (!status.startsWith('✅')) return;                       // exclude SCB unmatched (check status not notes)
     if (bid==='THB' || /^\d/.test(ota)) return;               // exclude summary/footer rows
     keepRows.push(row); keepFmts.push(srcFmts[i]);
   });
