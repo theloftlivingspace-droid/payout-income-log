@@ -830,18 +830,7 @@ function matchRoomFromSheet1() {
     }
 
     var curRoom=(pr[pR]||'').toString().trim();
-    if (curRoom.indexOf(',') >= 0) continue;  // skip multi-room already set
-    // allow overwrite single room only if fix.room is multi-room
-    var fix_candidate = null;
-    for (var fi2 = 0; fi2 < MANUAL_ROOM_FIXES.length; fi2++) {
-      var fx = MANUAL_ROOM_FIXES[fi2];
-      var bid2  = (data[i][pBid]  || '').toString().trim();
-      var conf2 = (data[i][pConf] || '').toString().trim();
-      if ((fx.bid && bid2 === fx.bid) || (fx.conf && conf2 === fx.conf)) {
-        fix_candidate = fx; break;
-      }
-    }
-    if (isValidRoom(curRoom) && !(fix_candidate && fix_candidate.room.indexOf(',') >= 0)) continue;
+    if (isValidRoom(curRoom)) continue;
     var guestRaw=(pr[pG]||'').toString().trim();
     if (!guestRaw||/^(รอ match)$/i.test(guestRaw)) continue;
     var ci=pr[pCI]?new Date(pr[pCI]):null;
