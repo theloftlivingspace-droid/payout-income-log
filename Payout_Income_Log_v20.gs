@@ -239,7 +239,7 @@ function parseAirbnbEmail(msg) {
   text = decodeQP(text);
   text = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
 
-  var bm = text.match(/([\d,]+\.\d+)\s*THB\s*was sent/i);
+  var bm = text.match(/[฿\u0e3f]([\d,]+\.\d+)\s*THB\s*was sent/i);
   var batchTotal = bm ? bm[1].replace(/,/g,'') : '';
 
   var allLines = text.split('\n');
