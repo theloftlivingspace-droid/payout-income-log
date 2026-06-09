@@ -935,6 +935,7 @@ function auditSheet() {
     if (last < 2) { Logger.log(tabName + ': empty'); return; }
     var data = sh.getRange(2, 1, last - 1, HEADERS.length).getValues();
     var noRoom = 0, noGuest = 0, noCI = 0, noCO = 0;
+    var KNOWN_OTA = ['Airbnb','Booking.com','Expedia','Trip.com','SCB'];
     data.forEach(function(r, i) {
       var ota   = (r[C.ota-1]   || '').toString().trim();
       var bid   = (r[C.bid-1]   || '').toString().trim();
@@ -943,7 +944,11 @@ function auditSheet() {
       var ci    = (r[C.ci-1]    || '').toString().trim();
       var co    = (r[C.co-1]    || '').toString().trim();
       var notes = (r[C.notes-1] || '').toString().trim();
+      // skip summary/footer rows (no known OTA prefix, blank OTA, or numeric OTA)
+      if (!ota || /^\d/.test(ota) || bid === 'THB') return;
+      if (!KNOWN_OTA.some(function(k){ return ota.startsWith(k); })) return;
       if (ota.startsWith('SCB') && notes.startsWith('↳')) return; // skip sub-rows
+      if (ota.startsWith('SCB') && notes.startsWith('✅')) return; // skip SCB total rows
       if (!room || room === '?') {
         noRoom++;
         Logger.log('[NO ROOM] '+tabName+' row '+(i+2)+' | '+ota+' | guest:"'+guest+'" | bid:'+bid);
