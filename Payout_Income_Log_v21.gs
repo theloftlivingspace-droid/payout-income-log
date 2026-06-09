@@ -585,7 +585,7 @@ function matchSCBtoOTA(sheet) {
     var guestRaw=(row[C.guest-1]||'').toString().trim();
     var entry={
       guest: guestRaw,
-      room:  isValidRoom(roomRaw)?roomRaw:'?',
+      room:  isValidRoom(roomRaw)?cleanRoom(roomRaw):'?',
       ci:    row[C.ci-1], co:row[C.co-1],
       nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
     };
@@ -722,7 +722,7 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var net    = parseAmt(nets[0] || scbAmt);
     var detail = detailByConf[ref] || detailByBid[ref]
                || detailByBid['guest:' + normG(guest)] || {};
-    var room   = isValidRoom(detail.room) ? detail.room : '?';
+    var room   = isValidRoom(detail.room) ? cleanRoom(detail.room) : '?';
     var ci     = dateStr(detail.ci);
     var co     = dateStr(detail.co);
     var nts    = detail.nights || nightsBetween(ci, co) || '';
@@ -750,7 +750,7 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
     var detail=detailByConf[ref]||detailByBid[ref]||{};
-    var room  =isValidRoom(detail.room)?detail.room:'?';
+    var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
     var ci    =dateStr(detail.ci);
     var co    =dateStr(detail.co);
     var nts   =detail.nights||'';
@@ -880,7 +880,7 @@ function matchRoomFromSheet1() {
       var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
       var foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
       if (foundSCB) {
-        paySheet.getRange(i+1,pR+1).setValue(foundSCB);
+        paySheet.getRange(i+1,pR+1).setValue(foundSCB.toString().replace(/\.0$/,''));
         payData[i][pR]=foundSCB;
         updated++;
       }
@@ -894,7 +894,7 @@ function matchRoomFromSheet1() {
     var ci=pr[pCI]?new Date(pr[pCI]):null;
     var found=findRoom(guestRaw,ci,byGuest);
     if (found) {
-      paySheet.getRange(i+1,pR+1).setValue(found);
+      paySheet.getRange(i+1,pR+1).setValue(found.toString().replace(/\.0$/,''));
       payData[i][pR]=found;
       updated++;
     }
@@ -1723,9 +1723,13 @@ function roomFromText(s){
   if (m) return m[1];
   return '?';
 }
+function cleanRoom(r) {
+  if (!r && r !== 0) return '?';
+  return r.toString().replace(/\.0$/, '').trim() || '?';
+}
 function isValidRoom(r){
   if (!r) return false;
-  var s=r.toString().trim();
+  var s=cleanRoom(r);
   if (!s||s==='?') return false;
   return /^\d[\d\/,\s]*$/.test(s);
 }
@@ -1763,9 +1767,10 @@ function getExistingIds(sheet){
 }
 function appendRow(sheet,row){
   var r=sheet.getLastRow()+1;
+  var roomVal = (row.room||'').toString().replace(/\.0$/, '').trim();
   sheet.getRange(r,1,1,HEADERS.length).setValues([[
     row.date,row.ota,row.bookingId,row.confCode,
-    row.guest,row.room,row.checkIn,row.checkOut,row.nights,
+    row.guest,roomVal,row.checkIn,row.checkOut,row.nights,
     row.total,row.commission,row.net,row.status,row.notes
   ]]);
   sheet.getRange(r,C.bid).setNumberFormat('@');
@@ -2208,7 +2213,7 @@ function matchSCBtoOTA(sheet) {
     var guestRaw=(row[C.guest-1]||'').toString().trim();
     var entry={
       guest: guestRaw,
-      room:  isValidRoom(roomRaw)?roomRaw:'?',
+      room:  isValidRoom(roomRaw)?cleanRoom(roomRaw):'?',
       ci:    row[C.ci-1], co:row[C.co-1],
       nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
     };
