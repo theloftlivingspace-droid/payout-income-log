@@ -114,6 +114,15 @@ var MANUAL_ROOM_FIXES = [
   { guest:'Siren Wills',                        room:'203' },  // standalone
 ];
 
+
+// ═══════════════════════════════════════════════════════════════
+// AIRBNB_EXTENSIONS — conf ที่มี payout > 1 ครั้ง (แขกขออยู่ต่อ)
+// bookingId: ABB-CONF (payout แรก), ABB-CONF-EXT-COYYYYMMDD (ครั้งถัดไป)
+// ═══════════════════════════════════════════════════════════════
+var AIRBNB_EXTENSIONS = {
+  'HM9X2AW3R3': true  // Eiji Uenaka — extension payout
+};
+
 // ═══════════════════════════════════════════════════════════════
 // ENTRY POINTS
 // ═══════════════════════════════════════════════════════════════
@@ -329,10 +338,11 @@ function parseAirbnbEmail(msg) {
       }
     }
 
-    // ถ้า conf ซ้ำ (เช่น alteration/extension) ให้ใช้ CI date เป็น suffix
-    var ciSuffix = checkIn ? '-EXT-'+checkIn.replace(/-/g,'') : '-EXT-'+dt.replace(/-/g,'');
+    // conf ใน AIRBNB_EXTENSIONS → ใช้ checkOut เป็น suffix เพื่อแยก payout หลายครั้ง
+    var extSuffix = (confCode && AIRBNB_EXTENSIONS[confCode] && checkOut)
+      ? '-EXT-'+checkOut.replace(/-/g,'') : '';
     var bookingId = confCode
-      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):ciSuffix)
+      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
       : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
 
     rows.push(makeRow('Airbnb',dt,bookingId,confCode,
@@ -2252,8 +2262,9 @@ function runAirbnbEmailParse() {
   rows.forEach(function(r) {
     var conf = (r.confCode   ||'').toString().trim();
     var bid  = (r.bookingId  ||'').toString().trim();
-    // skip เฉพาะเมื่อ bid ตรงกัน (conf อาจซ้ำได้ถ้าเป็น extension/alteration)
-    if (existingBids[bid]) {
+    // conf ใน AIRBNB_EXTENSIONS มี payout > 1 ครั้ง → เช็คแค่ bid (ไม่เช็ค conf)
+    var isExtConf = !!(conf && AIRBNB_EXTENSIONS[conf]);
+    if (isExtConf ? existingBids[bid] : (existingConfs[conf] || existingBids[bid])) {
       Logger.log('skip dup: '+conf+' / '+bid);
       return;
     }
