@@ -2047,3 +2047,180 @@ function syncSCBTotalRooms() {
   }
   Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// OVERRIDE: matchSCBtoOTA — match Airbnb by net sum (not gross total)
+// ═══════════════════════════════════════════════════════════════
+function matchSCBtoOTA(sheet) {
+  var last=sheet.getLastRow();
+  if (last<2) return;
+  var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+
+  var detailByConf={}, detailByBid={};
+  data.forEach(function(row) {
+    var ota =(row[C.ota-1]||'').toString().trim();
+    var conf=(row[C.conf-1]||'').toString().trim();
+    var bid =(row[C.bid-1]||'').toString().trim();
+    if (ota.startsWith('SCB')) return;
+    var roomRaw=(row[C.room-1]||'').toString().trim();
+    var guestRaw=(row[C.guest-1]||'').toString().trim();
+    var entry={
+      guest: guestRaw,
+      room:  isValidRoom(roomRaw)?roomRaw:'?',
+      ci:    row[C.ci-1], co:row[C.co-1],
+      nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
+    };
+    if (conf&&/^[A-Z0-9]{8,12}$/.test(conf)) detailByConf[conf]=entry;
+    if (bid) detailByBid[bid]=entry;
+    var gk2=normG(guestRaw);
+    if (gk2) detailByBid['guest:'+gk2]=entry;
+  });
+
+  // Build Airbnb batches keyed by NET SUM (not gross total)
+  // Group rows by payout date window (same day) → sum nets
+  var airbnbByDate={};  // date → [{conf,guest,net,total}]
+  data.forEach(function(row) {
+    var ota=(row[C.ota-1]||'').toString().trim();
+    if (ota!=='Airbnb') return;
+    var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
+    var bt =parseFloat((row[C.total-1]||0).toString().replace(/,/g,''))||0;
+    if (!net) return;
+    var raw=row[C.date-1];
+    var dt=raw instanceof Date
+      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
+      :raw.toString().substring(0,10);
+    if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
+    airbnbByDate[dt].push({
+      conf:(row[C.conf-1]||'').toString(),
+      guest:(row[C.guest-1]||'').toString(),
+      net:net, total:bt,
+      netStr:fmtAmt(row[C.net-1])
+    });
+  });
+
+  // Build batches: try every subset of rows on same/nearby dates that sum to SCB amount
+  // Simple approach: group all rows per date, sum nets → one batch per date
+  var airbnbBatches={};
+  Object.keys(airbnbByDate).forEach(function(dt) {
+    var rows=airbnbByDate[dt];
+    var netSum=0; rows.forEach(function(r){netSum+=r.net;});
+    var netSumStr=(Math.round(netSum*100)/100).toFixed(2);
+    var key=netSumStr+'|'+dt+'|Airbnb';
+    airbnbBatches[key]={
+      guests:rows.map(function(r){return r.guest;}),
+      confs: rows.map(function(r){return r.conf;}),
+      nets:  rows.map(function(r){return r.netStr;}),
+      date:dt, total:netSumStr
+    };
+    // Also key by gross total for single-booking payouts
+    if (rows.length===1) {
+      var grossStr=(Math.round(rows[0].total*100)/100).toFixed(2);
+      var gkey=grossStr+'|'+dt+'|Airbnb';
+      if (!airbnbBatches[gkey]) airbnbBatches[gkey]=airbnbBatches[key];
+    }
+  });
+
+  var tripNets={}, expediaNets={};
+  data.forEach(function(row) {
+    var ota=(row[C.ota-1]||'').toString().trim();
+    var net=fmtAmt(row[C.net-1]);
+    if (!net||net==='0.00') return;
+    var raw=row[C.date-1];
+    var dt=raw instanceof Date
+      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
+      :raw.toString().substring(0,10);
+    if (ota==='Trip.com'||ota==='Expedia') {
+      var map=ota==='Trip.com'?tripNets:expediaNets;
+      var key=net+'|'+dt.substring(0,7)+'|'+ota;
+      if (!map[key]) map[key]={guests:[],bids:[],nets:[],total:net,ota:ota};
+      map[key].guests.push((row[C.guest-1]||'').toString());
+      map[key].bids.push((row[C.bid-1]||'').toString());
+      map[key].nets.push((row[C.net-1]||'').toString());
+    }
+  });
+
+  var replacements=[];
+  data.forEach(function(row,i) {
+    var ota  =(row[C.ota-1]  ||'').toString();
+    var notes=(row[C.notes-1]||'').toString();
+    if (!ota.startsWith('SCB')) return;
+    if (notes.indexOf('✅')===0) return;
+
+    var scbAmt =fmtAmt(row[C.net-1]);
+    var rawD   =row[C.date-1];
+    var scbDate=rawD instanceof Date
+      ?Utilities.formatDate(rawD,'Asia/Bangkok','yyyy-MM-dd')
+      :rawD.toString().substring(0,10);
+    var scbOTA =(row[C.ota-1]||'').toString();
+    var scbBid =(row[C.bid-1]||'').toString().trim();
+    var acctM  =(row[C.notes-1]||'').toString().match(/x[\dX]+/);
+    var scbAcct=acctM?acctM[0]:'x256221';
+
+    var matchKey=null;
+    Object.keys(airbnbBatches).forEach(function(k) {
+      if (matchKey) return;
+      var b=airbnbBatches[k];
+      if (b.total!==scbAmt) return;
+      var diff=Math.round((new Date(scbDate)-new Date(b.date))/86400000);
+      if (diff>=-2&&diff<=7) matchKey=k;
+    });
+    if (matchKey) {
+      var b=airbnbBatches[matchKey];
+      replacements.push({deleteRow:i+2,
+        insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
+          b.confs,b.guests,b.nets,detailByConf,{},'Airbnb payout')});
+      delete airbnbBatches[matchKey]; return;
+    }
+
+    var scbMon=scbDate.substring(0,7);
+    var tripKeys=[scbAmt+'|'+scbMon+'|Trip.com',
+                  scbAmt+'|'+prevMonth(scbMon)+'|Trip.com',
+                  scbAmt+'|'+nextMonth(scbMon)+'|Trip.com'];
+    for (var ti=0;ti<tripKeys.length;ti++) {
+      var b=tripNets[tripKeys[ti]];
+      if (!b||!b.guests.length) continue;
+      replacements.push({deleteRow:i+2,
+        insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
+          b.bids,b.guests,b.nets,{},detailByBid,'Trip.com settlement')});
+      delete tripNets[tripKeys[ti]]; return;
+    }
+
+    var expKeys=[scbAmt+'|'+scbMon+'|Expedia',
+                 scbAmt+'|'+prevMonth(scbMon)+'|Expedia',
+                 scbAmt+'|'+nextMonth(scbMon)+'|Expedia'];
+    for (var ei=0;ei<expKeys.length;ei++) {
+      var b=expediaNets[expKeys[ei]];
+      if (!b||!b.guests.length) continue;
+      replacements.push({deleteRow:i+2,
+        insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
+          b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
+      delete expediaNets[expKeys[ei]]; return;
+    }
+  });
+
+  Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand');
+  replacements.sort(function(a,b){ return b.deleteRow-a.deleteRow; });
+  replacements.forEach(function(rep) {
+    sheet.deleteRow(rep.deleteRow);
+    var insertAt=rep.deleteRow;
+    rep.insertRows.forEach(function(r,idx) {
+      sheet.insertRowBefore(insertAt+idx);
+      var ri=insertAt+idx;
+      sheet.getRange(ri,1,1,HEADERS.length).setValues([[
+        r.date,r.ota,r.bookingId,r.confCode,
+        r.guest,r.room,r.checkIn,r.checkOut,r.nights,
+        r.total,r.commission,r.net,r.status,r.notes
+      ]]);
+      var bg=r._isTotal?SCB_TOTAL_BG:(r._isSingle?SCB_TOTAL_BG:SCB_SUB_BG);
+      sheet.getRange(ri,1,1,HEADERS.length).setBackground(bg);
+      if (r._isTotal||r._isSingle) {
+        sheet.getRange(ri,1,1,HEADERS.length).setFontWeight('bold');
+      } else {
+        sheet.getRange(ri,1,1,HEADERS.length)
+          .setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
+      }
+      sheet.getRange(ri,10,1,3).setNumberFormat('#,##0.00');
+    });
+  });
+  Logger.log('matchSCBtoOTA: done');
+}
