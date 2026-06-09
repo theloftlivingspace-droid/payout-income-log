@@ -95,6 +95,13 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
+  { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
+  { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
+  { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
+  // ── ยกเลิกการจอง ────────────────────────────────────────────
+  { bid:'2472443860',        room:'ยกเลิก' },  // JELLUM, JOHN / Expedia
+  { bid:'2439271536',        room:'ยกเลิก' },  // doungprasert, Khajonyod / Expedia
+  { bid:'1622924258510520',  room:'ยกเลิก' },  // PONPIAN/NAPADA / Trip.com
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
   { guest:'Hélèm Saouchi',                     room:'363' },  // conf HMP9HW25EN
