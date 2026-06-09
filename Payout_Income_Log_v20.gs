@@ -329,8 +329,10 @@ function parseAirbnbEmail(msg) {
       }
     }
 
+    // ถ้า conf ซ้ำ (เช่น alteration/extension) ให้ใช้ CI date เป็น suffix
+    var ciSuffix = checkIn ? '-EXT-'+checkIn.replace(/-/g,'') : '-EXT-'+dt.replace(/-/g,'');
     var bookingId = confCode
-      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):'')
+      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):ciSuffix)
       : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
 
     rows.push(makeRow('Airbnb',dt,bookingId,confCode,
@@ -2250,7 +2252,8 @@ function runAirbnbEmailParse() {
   rows.forEach(function(r) {
     var conf = (r.confCode   ||'').toString().trim();
     var bid  = (r.bookingId  ||'').toString().trim();
-    if (existingConfs[conf] || existingBids[bid]) {
+    // skip เฉพาะเมื่อ bid ตรงกัน (conf อาจซ้ำได้ถ้าเป็น extension/alteration)
+    if (existingBids[bid]) {
       Logger.log('skip dup: '+conf+' / '+bid);
       return;
     }
