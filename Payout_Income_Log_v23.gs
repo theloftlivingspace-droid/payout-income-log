@@ -171,6 +171,7 @@ function quickReformat() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
+  fillMissingCiCoFromPatch();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -254,6 +255,7 @@ function fullRebuild() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
+  fillMissingCiCoFromPatch();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -298,6 +300,7 @@ function dailyEmailSync() {
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
+  fillMissingCiCoFromPatch();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -2558,6 +2561,50 @@ function runAirbnbEmailParse() {
 // ═══════════════════════════════════════════════════════════════
 // FILL MISSING CI/CO FROM AIRBNB EMAIL
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// FILL CI/CO FROM HARDCODED PATCH — SCB total rows ที่ map ได้จาก conf
+// ═══════════════════════════════════════════════════════════════
+function fillMissingCiCoFromPatch() {
+  var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var h     = data[0].map(function(v){ return v.toString().trim(); });
+  var pBID  = h.indexOf('Booking ID');
+  var pCI   = h.indexOf('เช็คอิน');
+  var pCO   = h.indexOf('เช็คเอาท์');
+  var pN    = h.indexOf('คืน');
+
+  var CI_CO_PATCH = {
+    'SCB-2026-03-08-400.17':   {ci:'2026-03-03', co:'2026-03-06', nights:3},
+    'SCB-2026-03-18-700.00':   {ci:'2026-03-16', co:'2026-03-27', nights:11},
+    'SCB-2026-03-18-4684.48':  {ci:'2026-03-16', co:'2026-03-27', nights:11},
+    'SCB-2026-03-21-15105.30': {ci:'2026-02-19', co:'2026-05-03', nights:73},
+    'SCB-2026-03-22-3670.00':  {ci:'2026-02-28', co:'2026-03-20', nights:20},
+    'SCB-2026-03-30-13497.52': {ci:'2026-03-28', co:'2026-04-29', nights:32},
+    'SCB-2026-04-11-2800.05':  {ci:'2026-02-19', co:'2026-05-03', nights:73},
+    'SCB-2026-04-12-823.71':   {ci:'2026-03-31', co:'2026-04-13', nights:13},
+    'SCB-2026-04-21-3760.79':  {ci:'2026-03-31', co:'2026-04-13', nights:13},
+    'SCB-2026-04-22-2000.00':  {ci:'2026-03-31', co:'2026-04-13', nights:13},
+    'SCB-2026-06-02-6507.53':  {ci:'2026-05-31', co:'2026-06-15', nights:15},
+    'SCB-2026-06-08-2989.93':  {ci:'2026-05-31', co:'2026-06-15', nights:15}
+  };
+
+  var updated = 0;
+  for (var i = 1; i < data.length; i++) {
+    var bid = (data[i][pBID] || '').toString().trim();
+    var p   = CI_CO_PATCH[bid];
+    if (!p) continue;
+    var ci  = data[i][pCI]; var co = data[i][pCO];
+    if (ci && co) continue;  // already filled
+    sheet.getRange(i+1, pCI+1).setValue(p.ci);
+    sheet.getRange(i+1, pCO+1).setValue(p.co);
+    if (!data[i][pN]) sheet.getRange(i+1, pN+1).setValue(p.nights);
+    updated++;
+    Logger.log('fillMissingCiCoFromPatch: ' + bid + ' ci=' + p.ci + ' co=' + p.co);
+  }
+  Logger.log('fillMissingCiCoFromPatch: ' + updated + ' rows filled');
+}
+
 function fillMissingCiCoFromEmail() {
   var ss        = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet     = ss.getSheetByName(TAB_NAME);
