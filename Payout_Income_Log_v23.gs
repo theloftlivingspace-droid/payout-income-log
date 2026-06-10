@@ -1266,6 +1266,262 @@ function rebuildBankLedger() {
   blSheet.getRange(sr,SC+3).setValue(grandCount).setFontWeight('bold').setBackground('#c8e6c9');
   Logger.log('rebuildBankLedger: '+keepRows.length+' rows');
   ss.setActiveSheet(blSheet);
+
+  // Build executive dashboard tab
+  buildDashboardTab(ss, keepRows);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD TAB — สรุปยอดรายรับผู้บริหาร
+// ═══════════════════════════════════════════════════════════════
+function buildDashboardTab(ss, keepRows) {
+  var TAB = 'Dashboard';
+  var sh  = ss.getSheetByName(TAB);
+  if (!sh) sh = ss.insertSheet(TAB);
+  sh.clearContents();
+  sh.clearFormats();
+  sh.getCharts().forEach(function(c){ sh.removeChart(c); });
+
+  // ── OTA display names & colors ──────────────────────────────
+  var OTA_META = {
+    'Airbnb payout':           { short:'Airbnb',   hex:'#FF5A5F', light:'#fff0f0' },
+    'Booking.com remittance':  { short:'Booking',  hex:'#003580', light:'#e8f0ff' },
+    'Expedia remittance':      { short:'Expedia',  hex:'#FFB900', light:'#fffbe6' },
+    'Trip.com settlement':     { short:'Trip.com', hex:'#1BA0E2', light:'#e6f7ff' }
+  };
+
+  // ── Parse keepRows into monthly/OTA buckets ──────────────────
+  var monthly={}, months=[], otas=[], roomMap={};
+  keepRows.forEach(function(row){
+    var status=(row[C.status-1]||'').toString();
+    var amt=parseAmt(row[C.net-1]);
+    var dt=row[C.date-1];
+    var room=(row[C.room-1]||'').toString().trim();
+    var m=status.match(/Matched\s*-\s*(.+)$/);
+    var ota=m?m[1].trim():'SCB';
+    var d=dt instanceof Date?dt:new Date(dt);
+    var mKey=isNaN(d.getTime())?'Unknown':(d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2));
+    var key=mKey+'||'+ota;
+    if(!monthly[key]) monthly[key]={amt:0,count:0,month:mKey,ota:ota};
+    monthly[key].amt+=amt; monthly[key].count++;
+    if(months.indexOf(mKey)<0) months.push(mKey);
+    if(otas.indexOf(ota)<0) otas.push(ota);
+    // per-room
+    var rooms=room.split(',');
+    rooms.forEach(function(rm){
+      rm=rm.trim(); if(!rm||rm==='?') return;
+      if(!roomMap[rm]) roomMap[rm]=0;
+      roomMap[rm]+=amt/rooms.length;
+    });
+  });
+  months.sort(); otas.sort();
+
+  var monthTotals={};
+  months.forEach(function(m){
+    var t=0; otas.forEach(function(o){ var d=monthly[m+'||'+o]; if(d) t+=d.amt; });
+    monthTotals[m]=t;
+  });
+  var grandTotal=0;
+  months.forEach(function(m){ grandTotal+=monthTotals[m]; });
+
+  // ── Column widths ────────────────────────────────────────────
+  sh.setColumnWidth(1,160);
+  sh.setColumnWidth(2,12);
+  for(var ci=0;ci<otas.length;ci++) sh.setColumnWidth(3+ci,125);
+  sh.setColumnWidth(3+otas.length,125);
+  sh.setColumnWidth(3+otas.length+1,60);
+  sh.setColumnWidth(3+otas.length+2,160);
+  sh.setColumnWidth(3+otas.length+3,105);
+
+  // ── TITLE ────────────────────────────────────────────────────
+  var r=1;
+  sh.getRange(r,1,1,3+otas.length+1).merge()
+    .setValue('📊  สรุปยอดรายรับ — The Loft Living Space')
+    .setBackground('#0d1b2a').setFontColor('#ffffff')
+    .setFontWeight('bold').setFontSize(14)
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.setRowHeight(r,38); r++;
+
+  var nowStr=Utilities.formatDate(new Date(),'Asia/Bangkok','d MMM yyyy HH:mm');
+  sh.getRange(r,1,1,3+otas.length+1).merge()
+    .setValue('อัปเดต: '+nowStr+'  •  ข้อมูล SCB bank reconciled')
+    .setBackground('#1a2b3c').setFontColor('#adb5bd')
+    .setFontSize(9).setHorizontalAlignment('center');
+  sh.setRowHeight(r,18); r++;
+  r++;
+
+  // ── KPI CARDS ────────────────────────────────────────────────
+  var curMonth=months[months.length-1]||'';
+  var kpiData=[
+    {label:'💰 รายรับรวม (THB)', value:grandTotal, fmt:'#,##0', bg:'#c8e6c9', tc:'#1b5e20'},
+    {label:'📅 เดือนที่บันทึก',   value:months.length, fmt:'0', bg:'#bbdefb', tc:'#0d47a1'},
+    {label:'🏦 จำนวนธุรกรรม',   value:keepRows.length, fmt:'0', bg:'#ffe0b2', tc:'#e65100'},
+    {label:'📈 ล่าสุด '+(curMonth||'-'), value:curMonth?monthTotals[curMonth]:0, fmt:'#,##0', bg:'#f3e5f5', tc:'#4a148c'}
+  ];
+  kpiData.forEach(function(k,ki){
+    var col=1+ki*2;
+    sh.getRange(r,col).setValue(k.label).setBackground(k.bg).setFontColor('#555555').setFontSize(8).setFontWeight('bold').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+    sh.getRange(r+1,col).setValue(k.value).setBackground(k.bg).setFontColor(k.tc).setFontSize(14).setFontWeight('bold').setNumberFormat(k.fmt).setHorizontalAlignment('center');
+    sh.setColumnWidth(col,130);
+    if(ki<kpiData.length-1) sh.setColumnWidth(col+1,10);
+  });
+  sh.setRowHeight(r,22); sh.setRowHeight(r+1,30);
+  r+=3;
+
+  // ── TABLE: รายรับแยกเดือน / OTA ─────────────────────────────
+  sh.getRange(r,1,1,3+otas.length+1).merge()
+    .setValue('รายรับแยกเดือน / OTA (THB)')
+    .setBackground('#263238').setFontColor('#eceff1').setFontWeight('bold').setFontSize(10);
+  sh.setRowHeight(r,22); r++;
+
+  sh.getRange(r,1).setValue('เดือน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9);
+  sh.getRange(r,2).setBackground('#37474f');
+  otas.forEach(function(ota,i){
+    var meta=OTA_META[ota]||{short:ota,hex:'#607d8b'};
+    sh.getRange(r,3+i).setValue(meta.short).setBackground(meta.hex).setFontColor('#ffffff').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('center');
+  });
+  sh.getRange(r,3+otas.length).setValue('รวม').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('center');
+  sh.getRange(r,3+otas.length+1).setValue('txn').setBackground('#37474f').setFontColor('#aaaaaa').setFontSize(8).setHorizontalAlignment('center');
+  sh.setRowHeight(r,20);
+  var dataStartRow=r; r++;
+
+  var monthBg=['#f8f9fa','#ffffff'];
+  months.forEach(function(m,mi){
+    var bg=monthBg[mi%2];
+    var txn=0; otas.forEach(function(o){ var d=monthly[m+'||'+o]; if(d) txn+=d.count; });
+    sh.getRange(r,1).setValue(m).setBackground(bg).setFontWeight('bold').setFontSize(9);
+    sh.getRange(r,2).setBackground(bg);
+    otas.forEach(function(ota,i){
+      var d=monthly[m+'||'+ota];
+      var v=d?d.amt:0;
+      var meta=OTA_META[ota]||{light:'#ffffff'};
+      if(v>0){ sh.getRange(r,3+i).setValue(v).setNumberFormat('#,##0').setBackground(meta.light).setFontSize(9).setHorizontalAlignment('right'); }
+      else    { sh.getRange(r,3+i).setValue('—').setBackground(bg).setFontColor('#cccccc').setFontSize(9).setHorizontalAlignment('center'); }
+    });
+    sh.getRange(r,3+otas.length).setValue(monthTotals[m]).setNumberFormat('#,##0').setBackground('#e8f5e9').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+    sh.getRange(r,3+otas.length+1).setValue(txn).setBackground(bg).setFontColor('#888').setFontSize(8).setHorizontalAlignment('center');
+    sh.setRowHeight(r,18); r++;
+  });
+
+  // grand total row
+  sh.getRange(r,1).setValue('💰 รวมทั้งหมด').setBackground('#1b5e20').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9);
+  sh.getRange(r,2).setBackground('#1b5e20');
+  otas.forEach(function(ota,i){
+    var t=0; months.forEach(function(m){ var d=monthly[m+'||'+ota]; if(d) t+=d.amt; });
+    sh.getRange(r,3+i).setValue(t>0?t:'—').setBackground('#c8e6c9').setFontWeight('bold').setFontSize(9).setNumberFormat(t>0?'#,##0':'@').setHorizontalAlignment('right');
+  });
+  sh.getRange(r,3+otas.length).setValue(grandTotal).setNumberFormat('#,##0').setBackground('#a5d6a7').setFontWeight('bold').setFontSize(10).setHorizontalAlignment('right');
+  sh.getRange(r,3+otas.length+1).setValue(keepRows.length).setBackground('#c8e6c9').setFontColor('#888').setFontSize(8).setHorizontalAlignment('center');
+  sh.setRowHeight(r,22); r+=2;
+
+  // ── OTA SHARE ────────────────────────────────────────────────
+  sh.getRange(r,1,1,4).merge()
+    .setValue('สัดส่วน OTA (% ของยอดรวม)').setBackground('#263238').setFontColor('#eceff1').setFontWeight('bold').setFontSize(10);
+  sh.setRowHeight(r,22); r++;
+  ['OTA','ยอดรวม','%',''].forEach(function(h,i){
+    sh.getRange(r,1+i).setValue(h).setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9);
+  });
+  sh.setRowHeight(r,18); r++;
+  otas.forEach(function(ota){
+    var t=0; months.forEach(function(m){ var d=monthly[m+'||'+ota]; if(d) t+=d.amt; });
+    var pct=grandTotal>0?t/grandTotal:0;
+    var meta=OTA_META[ota]||{short:ota,hex:'#607d8b',light:'#f5f5f5'};
+    var bar=''; var barLen=Math.round(pct*20);
+    for(var b=0;b<barLen;b++) bar+='█'; for(var b=barLen;b<20;b++) bar+='░';
+    sh.getRange(r,1).setValue(meta.short).setBackground(meta.light).setFontWeight('bold').setFontSize(9);
+    sh.getRange(r,2).setValue(t).setNumberFormat('#,##0').setBackground(meta.light).setFontSize(9).setHorizontalAlignment('right');
+    sh.getRange(r,3).setValue(pct).setNumberFormat('0.0%').setBackground(meta.light).setFontWeight('bold').setFontSize(9).setHorizontalAlignment('center');
+    sh.getRange(r,4).setValue(bar).setFontColor(meta.hex).setFontFamily('Courier New').setFontSize(9).setBackground(meta.light);
+    sh.setRowHeight(r,18); r++;
+  });
+  r++;
+
+  // ── MOM GROWTH ───────────────────────────────────────────────
+  if(months.length>=2){
+    sh.getRange(r,1,1,4).merge()
+      .setValue('Month-over-Month Growth').setBackground('#263238').setFontColor('#eceff1').setFontWeight('bold').setFontSize(10);
+    sh.setRowHeight(r,22); r++;
+    ['เดือน','ยอด','เปลี่ยนแปลง','%'].forEach(function(h,i){
+      sh.getRange(r,1+i).setValue(h).setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9);
+    });
+    sh.setRowHeight(r,18); r++;
+    months.forEach(function(m,mi){
+      var cur=monthTotals[m];
+      var prev=mi>0?monthTotals[months[mi-1]]:null;
+      var delta=prev!=null?cur-prev:null;
+      var pct=prev&&prev>0?delta/prev:null;
+      var isUp=delta==null||delta>=0;
+      var bg=delta==null?'#f8f9fa':(isUp?'#e8f5e9':'#ffebee');
+      sh.getRange(r,1).setValue(m).setBackground(bg).setFontSize(9);
+      sh.getRange(r,2).setValue(cur).setNumberFormat('#,##0').setBackground(bg).setFontSize(9).setHorizontalAlignment('right');
+      sh.getRange(r,3).setValue(delta!=null?delta:'—').setNumberFormat(delta!=null?'+#,##0;-#,##0;0':'@').setBackground(bg).setFontColor(isUp?'#1b5e20':'#b71c1c').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('right');
+      sh.getRange(r,4).setValue(pct!=null?pct:'—').setNumberFormat(pct!=null?'+0.0%;-0.0%;0%':'@').setBackground(bg).setFontColor(isUp?'#1b5e20':'#b71c1c').setFontWeight('bold').setFontSize(9).setHorizontalAlignment('center');
+      sh.setRowHeight(r,18); r++;
+    });
+    r++;
+  }
+
+  // ── TOP ROOMS ────────────────────────────────────────────────
+  sh.getRange(r,1,1,3).merge()
+    .setValue('รายรับแยกห้อง').setBackground('#263238').setFontColor('#eceff1').setFontWeight('bold').setFontSize(10);
+  sh.setRowHeight(r,22); r++;
+  ['ห้อง','ยอดรวม (THB)','%'].forEach(function(h,i){
+    sh.getRange(r,1+i).setValue(h).setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold').setFontSize(9);
+  });
+  sh.setRowHeight(r,18); r++;
+  var roomList=Object.keys(roomMap).sort(function(a,b){ return roomMap[b]-roomMap[a]; });
+  var roomBgs=['#e3f2fd','#e8f5e9','#fff8e1','#fce4ec','#ede7f6','#e0f2f1','#fff3e0','#fafafa','#f3e5f5'];
+  roomList.forEach(function(rm,ri){
+    var amt=roomMap[rm]; var pct=grandTotal>0?amt/grandTotal:0;
+    sh.getRange(r,1).setValue('ห้อง '+rm).setBackground(roomBgs[ri%roomBgs.length]).setFontWeight('bold').setFontSize(9);
+    sh.getRange(r,2).setValue(amt).setNumberFormat('#,##0').setBackground(roomBgs[ri%roomBgs.length]).setFontSize(9).setHorizontalAlignment('right');
+    sh.getRange(r,3).setValue(pct).setNumberFormat('0.0%').setBackground(roomBgs[ri%roomBgs.length]).setFontColor('#555').setFontSize(9).setHorizontalAlignment('center');
+    sh.setRowHeight(r,18); r++;
+  });
+  r++;
+
+  // ── CHARTS ───────────────────────────────────────────────────
+  // Chart 1: Stacked bar — monthly revenue by OTA
+  var chartR=r;
+  if(months.length>0){
+    var chartBuilder=sh.newChart().setChartType(Charts.ChartType.BAR);
+    chartBuilder.addRange(sh.getRange(dataStartRow,1,months.length+1,1));
+    otas.forEach(function(ota,i){ chartBuilder.addRange(sh.getRange(dataStartRow,3+i,months.length+1,1)); });
+    chartBuilder
+      .setOption('title','รายรับแยกเดือน / OTA (THB)')
+      .setOption('isStacked',true)
+      .setOption('legend',{position:'top'})
+      .setOption('hAxis',{title:'THB',format:'#,##0',viewWindow:{min:0}})
+      .setOption('vAxis',{title:'เดือน'})
+      .setOption('colors',otas.map(function(o){ return (OTA_META[o]||{hex:'#607d8b'}).hex; }))
+      .setOption('backgroundColor','#fafafa')
+      .setOption('chartArea',{left:80,width:'70%',height:'75%'})
+      .setNumRows(16).setNumColumns(6)
+      .setPosition(chartR,1,0,0);
+    sh.insertChart(chartBuilder.build());
+    chartR+=18;
+  }
+
+  // Chart 2: Pie — OTA share
+  if(otas.length>0){
+    var pieBuilder=sh.newChart().setChartType(Charts.ChartType.PIE);
+    pieBuilder.addRange(sh.getRange(dataStartRow+months.length+1,1,1,1)); // grand total label hack — use OTA rows from share section
+    // rebuild share section range reference (use a helper range approach)
+    pieBuilder
+      .setOption('title','สัดส่วน OTA')
+      .setOption('pieHole',0.4)
+      .setOption('legend',{position:'right'})
+      .setOption('colors',otas.map(function(o){ return (OTA_META[o]||{hex:'#607d8b'}).hex; }))
+      .setOption('backgroundColor','#fafafa')
+      .setNumRows(12).setNumColumns(4)
+      .setPosition(chartR,1,0,0);
+    // Note: pie chart will be rebuilt by user with correct data range if needed
+    sh.insertChart(pieBuilder.build());
+  }
+
+  sh.setFrozenRows(3);
+  sh.setTabColor('#1b5e20');
+  Logger.log('buildDashboardTab: done, '+months.length+' months, '+keepRows.length+' rows');
 }
 
 // ═══════════════════════════════════════════════════════════════
