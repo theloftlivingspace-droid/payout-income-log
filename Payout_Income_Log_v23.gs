@@ -2843,6 +2843,44 @@ function fixUnmatchedRows() {
       net:5555.03,
       status:'✅ Matched - Trip.com settlement',
       note:'✅ Trip.com settlement | BOONTUM/PAKPONG(1622926832063903) ฿1750.78 | YAMKAMOL/METAWEE(1622926832063939) ฿2099.22 | NAM/SANG WON(1400825520948811) ฿1705.03 | Value Date: 2026-05-05'
+    },
+
+    // ── Early Mar — email ไม่ได้ parse, hardcode จาก invoice ─────
+    'SCB-2026-03-02-14599.29': {
+      conf:'HMR38XW4Z3, HMQDZAHYBE', guest:'Rica Chanel, Egor Lebedev', room:'300, 205',
+      ci:'', co:'', nights:'', net:14599.29,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Rica Chanel(HMR38XW4Z3) room 300 + Egor Lebedev(HMQDZAHYBE) room 205 | Value Date: 2026-03-02'
+    },
+    'SCB-2026-03-04-18195.32': {
+      conf:'', guest:'Shaokun Zhang', room:'300',
+      ci:'', co:'', nights:'', net:18195.32,
+      status:'✅ Matched - Expedia remittance',
+      note:'✅ Expedia remittance | Shaokun Zhang room 300 | Value Date: 2026-03-04'
+    },
+    'SCB-2026-03-04-997.34': {
+      conf:'HM529FX8QH', guest:'Gabriel Carletto Cousseau', room:'214',
+      ci:'', co:'', nights:'', net:997.34,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Gabriel Carletto Cousseau(HM529FX8QH) room 214 | Value Date: 2026-03-04'
+    },
+    'SCB-2026-03-12-1396.26': {
+      conf:'', guest:'Songwut Heraphiwatthana', room:'113',
+      ci:'', co:'', nights:'', net:1396.26,
+      status:'✅ Matched - Expedia remittance',
+      note:'✅ Expedia remittance | Songwut Heraphiwatthana room 113 | Value Date: 2026-03-12'
+    },
+    'SCB-2026-03-21-15105.30': {
+      conf:'HMP9HW25EN', guest:'Hélèm Saouchi', room:'363',
+      ci:'', co:'', nights:'', net:15105.30,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Hélèm Saouchi(HMP9HW25EN) room 363 | Value Date: 2026-03-21'
+    },
+    'SCB-2026-03-30-13497.52': {
+      conf:'HM8QEMEYDM', guest:'Amir Hayes', room:'205',
+      ci:'', co:'', nights:'', net:13497.52,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Amir Hayes(HM8QEMEYDM) room 205 | Value Date: 2026-03-30'
     }
   };
 
