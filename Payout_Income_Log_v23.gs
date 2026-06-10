@@ -2777,6 +2777,7 @@ function restoreFromGitHub() {
 
   // Re-apply formatting
   stylePayoutLog();
+  rebuildBankLedger();  // re-apply ledger colors & summary (reads from Payout_Income_Log)
   SpreadsheetApp.getActiveSpreadsheet().toast('Restore เสร็จ — ข้อมูลกลับมาแล้ว', 'Done', 6);
   Logger.log('restoreFromGitHub: complete');
 }
