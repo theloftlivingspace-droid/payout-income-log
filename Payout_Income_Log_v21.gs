@@ -2523,3 +2523,149 @@ function exportToGitHub() {
     } catch(e) { Logger.log('exportToGitHub push error: ' + e.message); }
   });
 }
+
+
+// ═══════════════════════════════════════════════════════════════
+// PATCH: fixUnmatchedRows
+// - ลบ รอ match ก่อน 2026-03-05
+// - Match รายการที่ระบุตัวได้จาก receipts/sheet1/email
+// ═══════════════════════════════════════════════════════════════
+function fixUnmatchedRows() {
+  var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName('Payout_Income_Log');
+  var data  = sheet.getDataRange().getValues();
+
+  // column indices (0-based)
+  var C_DATE=0, C_OTA=1, C_BID=2, C_CONF=3, C_GUEST=4, C_ROOM=5,
+      C_CI=6, C_CO=7, C_N=8, C_AMT=9, C_COMM=10, C_NET=11, C_STATUS=12, C_NOTE=13;
+
+  var cutoff = new Date('2026-03-05');
+
+  // ── 1. collect rows to DELETE (pre-Mar05 รอ match) ──────────────
+  var toDelete = [];
+  for (var i = data.length - 1; i >= 1; i--) {
+    var row = data[i];
+    var status = (row[C_STATUS] || '').toString();
+    if (status.indexOf('รอ match') === -1 && status !== 'เงินเข้าบัญชี x256221') continue;
+    var d = parseDate_(row[C_DATE]);
+    if (!d) continue;
+    if (d < cutoff) toDelete.push(i + 1); // 1-indexed sheet row
+  }
+  // delete from bottom up (already reversed)
+  toDelete.forEach(function(r) { sheet.deleteRow(r); });
+  Logger.log('fixUnmatchedRows: deleted ' + toDelete.length + ' pre-Mar05 rows');
+
+  // reload after deletions
+  data = sheet.getDataRange().getValues();
+
+  // ── 2. match map: BookingID → {conf, guest, room, ci, co, nights, net, status, note} ──
+  var matchMap = {
+
+    // 辉宫 Gong Hui (HMKSMSFWQJ) — 4 installments
+    'SCB-2026-04-02-1923.36': {
+      conf:'HMKSMSFWQJ', guest:'辉 宫 Gong Hui', room:'300',
+      ci:'2026-04-01', co:'2026-04-13', nights:12, net:1923.36,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | 辉 宫(HMKSMSFWQJ) NET ฿1923.36 | Value Date: 2026-04-02'
+    },
+    'SCB-2026-04-07-2126.89': {
+      conf:'HMKSMSFWQJ', guest:'辉 宫 Gong Hui', room:'300',
+      ci:'2026-04-01', co:'2026-04-13', nights:12, net:2126.89,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | 辉 宫(HMKSMSFWQJ) NET ฿2126.89 | Value Date: 2026-04-07'
+    },
+    'SCB-2026-04-09-2201.90': {
+      conf:'HMKSMSFWQJ', guest:'辉 宫 Gong Hui', room:'300',
+      ci:'2026-04-01', co:'2026-04-13', nights:12, net:2201.90,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | 辉 宫(HMKSMSFWQJ) NET ฿2201.90 | Value Date: 2026-04-09'
+    },
+    'SCB-2026-04-21-943.21': {
+      conf:'HMKSMSFWQJ', guest:'辉 宫 Gong Hui', room:'300',
+      ci:'2026-04-01', co:'2026-04-13', nights:12, net:943.21,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | 辉 宫(HMKSMSFWQJ) NET ฿943.21 | Value Date: 2026-04-21'
+    },
+
+    // ALLARD Angélique — Booking.com → SCB Transfer Apr07
+    'SCB-2026-04-07-980.93': {
+      conf:'BKC-allardangl-20260330', guest:'ALLARD Angélique', room:'203',
+      ci:'2026-03-30', co:'2026-04-01', nights:2, net:980.93,
+      status:'✅ Matched - Booking.com remittance',
+      note:'✅ Booking.com remittance | ALLARD Angélique NET ฿980.93 | Value Date: 2026-04-07'
+    },
+
+    // Ngân Nguyễn Thị (HM49DKJYBR) — initial payout Apr17
+    'SCB-2026-04-17-4823.58': {
+      conf:'HM49DKJYBR', guest:'Ngân Nguyễn Thị', room:'113',
+      ci:'2026-04-16', co:'2026-04-25', nights:9, net:4823.58,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Ngân Nguyễn Thị(HM49DKJYBR) NET ฿4823.58 | Value Date: 2026-04-17'
+    },
+
+    // Dave Casey (HMAXNAECPJ) — initial payout May16 (before checkout)
+    'SCB-2026-05-16-1169.49': {
+      conf:'HMAXNAECPJ', guest:'Dave Casey', room:'108',
+      ci:'2026-05-15', co:'2026-05-17', nights:2, net:1169.49,
+      status:'✅ Matched - Airbnb payout',
+      note:'✅ Airbnb payout | Dave Casey(HMAXNAECPJ) NET ฿1169.49 | Value Date: 2026-05-16'
+    },
+
+    // Natthaphon Pakhothanang — Booking.com remittance May26
+    'SCB-2026-05-26-1423.79': {
+      conf:'BKC-natthaphon-20260513', guest:'Natthaphon Pakhothanang', room:'103',
+      ci:'2026-05-13', co:'2026-05-15', nights:2, net:1423.79,
+      status:'✅ Matched - Booking.com remittance',
+      note:'✅ Booking.com remittance | Natthaphon Pakhothanang NET ฿1423.79 | Value Date: 2026-05-26'
+    },
+
+    // Trip.com confirmed matches
+    'SCB-2026-03-27-1826.72': {
+      conf:'1653712218028901', guest:'Javid Osborne/Sarina', room:'204',
+      ci:'2026-03-17', co:'2026-03-21', nights:4, net:1826.72,
+      status:'✅ Matched - Trip.com settlement',
+      note:'✅ Trip.com settlement | Javid Osborne/Sarina(1653712218028901) NET ฿1826.72 | Value Date: 2026-03-27'
+    },
+    'SCB-2026-05-05-5555.03': {
+      conf:'1622926832063903, 1622926832063939, 1400825520948811',
+      guest:'BOONTUM/PAKPONG, YAMKAMOL/METAWEE, NAM/SANG WON',
+      room:'108, 204, 300',
+      ci:'', co:'', nights:'',
+      net:5555.03,
+      status:'✅ Matched - Trip.com settlement',
+      note:'✅ Trip.com settlement | BOONTUM/PAKPONG(1622926832063903) ฿1750.78 | YAMKAMOL/METAWEE(1622926832063939) ฿2099.22 | NAM/SANG WON(1400825520948811) ฿1705.03 | Value Date: 2026-05-05'
+    }
+  };
+
+  // ── 3. apply matches ──────────────────────────────────────────
+  var updated = 0;
+  // reload again after potential deletions
+  data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    var bid = (data[i][C_BID] || '').toString().trim();
+    var m   = matchMap[bid];
+    if (!m) continue;
+    var r = i + 1;
+    if (m.conf)   sheet.getRange(r, C_CONF+1).setValue(m.conf);
+    if (m.guest)  sheet.getRange(r, C_GUEST+1).setValue(m.guest);
+    if (m.room)   sheet.getRange(r, C_ROOM+1).setValue(m.room);
+    if (m.ci)     sheet.getRange(r, C_CI+1).setValue(m.ci);
+    if (m.co)     sheet.getRange(r, C_CO+1).setValue(m.co);
+    if (m.nights !== '') sheet.getRange(r, C_N+1).setValue(m.nights);
+    if (m.net)    sheet.getRange(r, C_NET+1).setValue(m.net);
+                  sheet.getRange(r, C_STATUS+1).setValue(m.status);
+                  sheet.getRange(r, C_NOTE+1).setValue(m.note);
+    updated++;
+    Logger.log('fixUnmatchedRows: matched ' + bid);
+  }
+  Logger.log('fixUnmatchedRows: updated ' + updated + ' rows');
+  SpreadsheetApp.flush();
+}
+
+function parseDate_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  var s = v.toString().trim();
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
