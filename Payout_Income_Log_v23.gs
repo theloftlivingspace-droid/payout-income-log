@@ -1205,65 +1205,6 @@ function rebuildBankLedger() {
     blSheet.getRange(2,10,keepRows.length,3).setNumberFormat('#,##0.00');
   }
 
-  // ── Summary: monthly breakdown by OTA (parsed from status) — starts at col E=5 ──
-  var SC=5; // summary start column (E)
-  var sr=keepRows.length+3;
-  // header
-  blSheet.getRange(sr,SC,1,4).merge()
-    .setValue('สรุปยอดรายรับ Bank Ledger (แยกรายเดือน)')
-    .setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold').setFontSize(11);
-  sr++;
-  blSheet.getRange(sr,SC  ).setValue('เดือน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,SC+1).setValue('OTA').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,SC+2).setValue('ยอดรวม (THB)').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  blSheet.getRange(sr,SC+3).setValue('จำนวน').setBackground('#37474f').setFontColor('#ffffff').setFontWeight('bold');
-  sr++;
-
-  // group by month + OTA
-  var monthly={}, months=[], otas=[];
-  keepRows.forEach(function(row){
-    var dt=row[C.date-1];
-    var status=(row[C.status-1]||'').toString();
-    var amt=parseAmt(row[C.net-1]);
-    // extract OTA from status: "✅ Matched - Airbnb" → "Airbnb"
-    var otaMatch=status.match(/Matched\s*-\s*(.+)$/);
-    var ota=otaMatch?otaMatch[1].trim():'SCB';
-    var d=dt instanceof Date?dt:new Date(dt);
-    var mKey=isNaN(d)?'Unknown':(d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2));
-    var key=mKey+'||'+ota;
-    if (!monthly[key]) { monthly[key]={amt:0,count:0,month:mKey,ota:ota}; }
-    monthly[key].amt+=amt; monthly[key].count++;
-    if (months.indexOf(mKey)===-1) months.push(mKey);
-    if (otas.indexOf(ota)===-1) otas.push(ota);
-  });
-  months.sort();
-
-  var grand=0, grandCount=0;
-  var monthBgs=['#f5f5f5','#ffffff'];
-  months.forEach(function(m,mi){
-    var bg=monthBgs[mi%2];
-    var monthTotal=0, monthCount=0;
-    otas.sort().forEach(function(ota){
-      var d=monthly[m+'||'+ota];
-      if (!d) return;
-      blSheet.getRange(sr,SC  ).setValue(m).setBackground(bg);
-      blSheet.getRange(sr,SC+1).setValue(ota).setBackground(bg);
-      blSheet.getRange(sr,SC+2).setValue(d.amt).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground(bg);
-      blSheet.getRange(sr,SC+3).setValue(d.count).setBackground(bg);
-      monthTotal+=d.amt; monthCount+=d.count;
-      sr++;
-    });
-    // month subtotal
-    blSheet.getRange(sr,SC  ).setValue(m+' รวม').setFontWeight('bold').setBackground('#e3f2fd');
-    blSheet.getRange(sr,SC+2).setValue(monthTotal).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#e3f2fd');
-    blSheet.getRange(sr,SC+3).setValue(monthCount).setFontWeight('bold').setBackground('#e3f2fd');
-    grand+=monthTotal; grandCount+=monthCount;
-    sr++;
-  });
-  // grand total
-  blSheet.getRange(sr,SC  ).setValue('💰 รวมทั้งหมด').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,SC+2).setValue(grand).setNumberFormat('#,##0.00').setFontWeight('bold').setBackground('#c8e6c9');
-  blSheet.getRange(sr,SC+3).setValue(grandCount).setFontWeight('bold').setBackground('#c8e6c9');
   Logger.log('rebuildBankLedger: '+keepRows.length+' rows');
   ss.setActiveSheet(blSheet);
 
