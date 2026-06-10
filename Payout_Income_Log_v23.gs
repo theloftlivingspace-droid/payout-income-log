@@ -1101,7 +1101,7 @@ function applyManualRoomFixes() {
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
-      if (!matched && fix.conf  && conf  && conf  === fix.conf)  matched = true;
+      if (!matched && fix.conf  && conf  && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0))  matched = true;
       if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
@@ -2116,7 +2116,7 @@ function applyManualRoomFixes() {
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
-      if (!matched && fix.conf  && conf  && conf  === fix.conf)  matched = true;
+      if (!matched && fix.conf  && conf  && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0))  matched = true;
       if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
