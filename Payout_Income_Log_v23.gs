@@ -2660,6 +2660,80 @@ function exportToGitHub() {
 
 
 // ═══════════════════════════════════════════════════════════════
+// RESTORE FROM GITHUB — คืนข้อมูลจาก JSON backup
+// รันเมื่อ sheet หาย หรือต้องการ rollback
+// ═══════════════════════════════════════════════════════════════
+function restoreFromGitHub() {
+  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  var repo  = 'theloftlivingspace-droid/payout-income-log';
+  var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
+
+  var files = [
+    { path: 'data/payout_income_log.json', tabName: TAB_NAME },
+    { path: 'data/bank_ledger.json',       tabName: BANK_LEDGER_TAB }
+  ];
+
+  files.forEach(function(f) {
+    try {
+      var url = 'https://api.github.com/repos/' + repo + '/contents/' + f.path;
+      var res = UrlFetchApp.fetch(url, {
+        headers: { Authorization: 'token ' + token },
+        muteHttpExceptions: true
+      });
+      if (res.getResponseCode() !== 200) {
+        Logger.log('restoreFromGitHub: HTTP ' + res.getResponseCode() + ' for ' + f.path);
+        return;
+      }
+      var meta    = JSON.parse(res.getContentText());
+      var decoded = Utilities.newBlob(Utilities.base64Decode(meta.content)).getDataAsString();
+      var data    = JSON.parse(decoded);
+      if (!data || data.length < 2) { Logger.log('restoreFromGitHub: empty data for ' + f.tabName); return; }
+
+      // Get or create sheet
+      var sheet = ss.getSheetByName(f.tabName);
+      if (!sheet) sheet = ss.insertSheet(f.tabName);
+      sheet.clearContents();
+      sheet.clearFormats();
+
+      // Write all rows at once
+      var numRows = data.length;
+      var numCols = data[0].length;
+      sheet.getRange(1, 1, numRows, numCols).setValues(data);
+
+      // Parse dates back (ISO strings → Date objects)
+      var dateColIndices = [];
+      var header = data[0];
+      ['วันที่ตรวจพบ','เช็คอิน','เช็คเอาท์'].forEach(function(col) {
+        var idx = header.indexOf(col);
+        if (idx >= 0) dateColIndices.push(idx);
+      });
+      if (dateColIndices.length && numRows > 1) {
+        for (var r = 1; r < numRows; r++) {
+          dateColIndices.forEach(function(ci) {
+            var v = data[r][ci];
+            if (v && typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}/)) {
+              var d = new Date(v);
+              if (!isNaN(d.getTime())) {
+                sheet.getRange(r+1, ci+1).setValue(d);
+              }
+            }
+          });
+        }
+      }
+
+      Logger.log('restoreFromGitHub: ' + f.tabName + ' restored ' + numRows + ' rows');
+    } catch(e) {
+      Logger.log('restoreFromGitHub ERROR ' + f.tabName + ': ' + e.message);
+    }
+  });
+
+  // Re-apply formatting
+  stylePayoutLog();
+  SpreadsheetApp.getActiveSpreadsheet().toast('Restore เสร็จ — ข้อมูลกลับมาแล้ว', 'Done', 6);
+  Logger.log('restoreFromGitHub: complete');
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PATCH: fixUnmatchedRows
 // - ลบ รอ match ก่อน 2026-03-05
 // - Match รายการที่ระบุตัวได้จาก receipts/sheet1/email
