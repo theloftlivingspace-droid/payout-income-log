@@ -2664,7 +2664,8 @@ function exportToGitHub() {
 // รันเมื่อ sheet หาย หรือต้องการ rollback
 // ═══════════════════════════════════════════════════════════════
 function restoreFromGitHub() {
-  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN')
+              || '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';
   var repo  = 'theloftlivingspace-droid/payout-income-log';
   var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
 
