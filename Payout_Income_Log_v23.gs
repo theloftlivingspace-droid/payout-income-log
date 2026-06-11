@@ -1421,45 +1421,6 @@ function buildDashboardTab(ss, keepRows) {
   });
   r++;
 
-  // ── CHARTS ───────────────────────────────────────────────────
-  // Chart 1: Stacked bar — monthly revenue by OTA
-  var chartR=r;
-  if(months.length>0){
-    var chartBuilder=sh.newChart().setChartType(Charts.ChartType.BAR);
-    chartBuilder.addRange(sh.getRange(dataStartRow,1,months.length+1,1));
-    otas.forEach(function(ota,i){ chartBuilder.addRange(sh.getRange(dataStartRow,3+i,months.length+1,1)); });
-    chartBuilder
-      .setOption('title','รายรับแยกเดือน / OTA (THB)')
-      .setOption('isStacked',true)
-      .setOption('legend',{position:'top'})
-      .setOption('hAxis',{title:'THB',format:'#,##0',viewWindow:{min:0}})
-      .setOption('vAxis',{title:'เดือน'})
-      .setOption('colors',otas.map(function(o){ return (OTA_META[o]||{hex:'#607d8b'}).hex; }))
-      .setOption('backgroundColor','#fafafa')
-      .setOption('chartArea',{left:80,width:'70%',height:'75%'})
-      .setNumRows(16).setNumColumns(6)
-      .setPosition(chartR,1,0,0);
-    sh.insertChart(chartBuilder.build());
-    chartR+=18;
-  }
-
-  // Chart 2: Pie — OTA share
-  if(otas.length>0){
-    var pieBuilder=sh.newChart().setChartType(Charts.ChartType.PIE);
-    pieBuilder.addRange(sh.getRange(dataStartRow+months.length+1,1,1,1)); // grand total label hack — use OTA rows from share section
-    // rebuild share section range reference (use a helper range approach)
-    pieBuilder
-      .setOption('title','สัดส่วน OTA')
-      .setOption('pieHole',0.4)
-      .setOption('legend',{position:'right'})
-      .setOption('colors',otas.map(function(o){ return (OTA_META[o]||{hex:'#607d8b'}).hex; }))
-      .setOption('backgroundColor','#fafafa')
-      .setNumRows(12).setNumColumns(4)
-      .setPosition(chartR,1,0,0);
-    // Note: pie chart will be rebuilt by user with correct data range if needed
-    sh.insertChart(pieBuilder.build());
-  }
-
   sh.setFrozenRows(3);
   sh.setTabColor('#1b5e20');
   Logger.log('buildDashboardTab: done, '+months.length+' months, '+keepRows.length+' rows');
