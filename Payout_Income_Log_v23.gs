@@ -172,6 +172,7 @@ function quickReformat() {
   applyManualRoomFixes();
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
+  fillMissingCiCoFromBookingID();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -256,6 +257,7 @@ function fullRebuild() {
   applyManualRoomFixes();
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
+  fillMissingCiCoFromBookingID();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -301,6 +303,7 @@ function dailyEmailSync() {
   applyManualRoomFixes();
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
+  fillMissingCiCoFromBookingID();
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
@@ -2325,6 +2328,51 @@ function fillMissingCiCoFromPatch() {
     Logger.log('fillMissingCiCoFromPatch: ' + bid + ' ci=' + p.ci + ' co=' + p.co);
   }
   Logger.log('fillMissingCiCoFromPatch: ' + updated + ' rows filled');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILL MISSING CI/CO FROM OTHER ROW WITH SAME BOOKING ID
+// ═══════════════════════════════════════════════════════════════
+function fillMissingCiCoFromBookingID() {
+  var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  var data  = sheet.getDataRange().getValues();
+  var h     = data[0].map(function(v){ return v.toString().trim(); });
+  var pBID  = h.indexOf('Booking ID');
+  var pCI   = h.indexOf('เช็คอิน');
+  var pCO   = h.indexOf('เช็คเอาท์');
+  var pN    = h.indexOf('คืน');
+
+  // Build map: bookingID -> {ci, co, nights} from rows that already have CI/CO
+  var bidMap = {};
+  for (var i = 1; i < data.length; i++) {
+    var ci = data[i][pCI], co = data[i][pCO];
+    if (!ci || !co) continue;
+    var bidRaw = (data[i][pBID] || '').toString();
+    bidRaw.split(',').forEach(function(b) {
+      b = b.trim();
+      if (b && !bidMap[b]) bidMap[b] = { ci: ci, co: co, nights: data[i][pN] };
+    });
+  }
+
+  var updated = 0;
+  for (var i = 1; i < data.length; i++) {
+    var ci = data[i][pCI], co = data[i][pCO];
+    if (ci && co) continue;
+    var bidRaw = (data[i][pBID] || '').toString();
+    var bids = bidRaw.split(',').map(function(b){ return b.trim(); }).filter(Boolean);
+    var info = null;
+    for (var j = 0; j < bids.length; j++) {
+      if (bidMap[bids[j]]) { info = bidMap[bids[j]]; break; }
+    }
+    if (!info) continue;
+    sheet.getRange(i+1, pCI+1).setValue(info.ci);
+    sheet.getRange(i+1, pCO+1).setValue(info.co);
+    if (!data[i][pN] && info.nights) sheet.getRange(i+1, pN+1).setValue(info.nights);
+    updated++;
+    Logger.log('fillMissingCiCoFromBookingID: bid=' + bidRaw + ' ci=' + info.ci + ' co=' + info.co);
+  }
+  Logger.log('fillMissingCiCoFromBookingID: ' + updated + ' rows filled');
 }
 
 function fillMissingCiCoFromEmail() {
