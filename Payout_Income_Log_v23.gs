@@ -1649,19 +1649,28 @@ function stylePayoutLog() {
 
   sheet.getRange(2, 1, lastRow - 1, HEADERS.length).setBackgrounds(bgs);
 
-  // ── Font overrides for SCB sub/total ──────────────────────────
-  data.forEach(function(row, i) {
+  // ── Font overrides — batch arrays to avoid per-row API calls ──
+  var fWeights = [], fStyles = [], fColors = [];
+  data.forEach(function(row) {
     var ota   = (row[C.ota-1]   || '').toString().trim();
     var notes = (row[C.notes-1] || '').toString().trim();
-    var rng   = sheet.getRange(i + 2, 1, 1, HEADERS.length);
+    var fw, fs, fc;
     if (notes.startsWith('↳')) {
-      rng.setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
+      fw = 'normal'; fs = 'italic'; fc = '#444444';
     } else if (ota.startsWith('SCB')) {
-      rng.setFontWeight('bold').setFontStyle('normal').setFontColor('#000000');
+      fw = 'bold';   fs = 'normal'; fc = '#000000';
     } else {
-      rng.setFontWeight('normal').setFontStyle('normal').setFontColor('#000000');
+      fw = 'normal'; fs = 'normal'; fc = '#000000';
     }
+    var emptyRow = new Array(HEADERS.length);
+    fWeights.push(emptyRow.fill(fw));
+    fStyles.push(emptyRow.fill(fs));
+    fColors.push(emptyRow.fill(fc));
   });
+  var dataRng = sheet.getRange(2, 1, lastRow - 1, HEADERS.length);
+  dataRng.setFontWeights(fWeights);
+  dataRng.setFontStyles(fStyles);
+  dataRng.setFontColors(fColors);
 
   // Number format for amount columns
   sheet.getRange(2, 10, lastRow - 1, 3).setNumberFormat('#,##0.00');
@@ -2491,6 +2500,7 @@ function restoreFromGitHub() {
 
   // Re-apply formatting
   stylePayoutLog();
+  styleSheet1();
   rebuildBankLedger();  // re-apply ledger colors & summary (reads from Payout_Income_Log)
   SpreadsheetApp.getActiveSpreadsheet().toast('Restore เสร็จ — ข้อมูลกลับมาแล้ว', 'Done', 6);
   Logger.log('restoreFromGitHub: complete');
