@@ -1181,12 +1181,23 @@ function sortPayoutByOTA(sheet) {
   var lastR = sheet.getLastRow();
   if (lastR > 1) {
     var allData = sheet.getRange(2, 1, lastR-1, HEADERS.length).getValues();
+    var mergedRefs2 = {};
+    allData.forEach(function(row) {
+      var ota = (row[C.ota-1] || '').toString().trim();
+      var ref = (row[C.bid-1] || '').toString().trim();
+      var conf = (row[C.conf-1] || '').toString().trim();
+      if (ota.startsWith('SCB') && conf.indexOf(',') >= 0 && ref) mergedRefs2[ref] = true;
+    });
     allData.forEach(function(row, i) {
       var notes = (row[C.notes-1] || '').toString();
+      var ota = (row[C.ota-1] || '').toString().trim();
+      var ref = (row[C.bid-1] || '').toString().trim();
+      var conf = (row[C.conf-1] || '').toString().trim();
+      var isSplit = ota.startsWith('SCB') && conf.indexOf(',') < 0 && mergedRefs2[ref];
       var rng = sheet.getRange(i+2, 1, 1, HEADERS.length);
-      if (notes.startsWith('↳')) {
+      if (notes.startsWith('↳') || isSplit) {
         rng.setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
-      } else if ((row[C.ota-1] || '').toString().startsWith('SCB')) {
+      } else if (ota.startsWith('SCB')) {
         rng.setFontWeight('bold').setFontStyle('normal').setFontColor('#000000');
       } else {
         rng.setFontWeight('normal').setFontStyle('normal').setFontColor('#000000');
@@ -1620,6 +1631,25 @@ function stylePayoutLog() {
 
   var data = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
 
+  // Identify SCB ref codes that have a "merged" row (multiple comma-separated Booking IDs).
+  // The other rows sharing that same SCB ref but with a single Booking ID are split/sub-rows
+  // and should be styled like the ↳ sub-rows, not as SCB total rows.
+  var mergedRefs = {};
+  data.forEach(function(row) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    var ref = (row[C.bid-1] || '').toString().trim();
+    var conf = (row[C.conf-1] || '').toString().trim();
+    if (ota.startsWith('SCB') && conf.indexOf(',') >= 0 && ref) {
+      mergedRefs[ref] = true;
+    }
+  });
+  function isSplitSubRow(row) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    var ref = (row[C.bid-1] || '').toString().trim();
+    var conf = (row[C.conf-1] || '').toString().trim();
+    return ota.startsWith('SCB') && conf.indexOf(',') < 0 && mergedRefs[ref];
+  }
+
   // Build background array row-by-row
   var bgs = [];
   data.forEach(function(row) {
@@ -1632,8 +1662,8 @@ function stylePayoutLog() {
     if (status.indexOf('Resolution') >= 0) {
       rowBg = RES_BG;
     }
-    // SCB sub-rows (↳ prefix in notes)
-    else if (notes.startsWith('↳')) {
+    // SCB sub-rows (↳ prefix in notes, or split row of a merged SCB batch)
+    else if (notes.startsWith('↳') || isSplitSubRow(row)) {
       rowBg = SCB_SUB_BG;
     }
     // SCB total / single rows
@@ -1658,7 +1688,7 @@ function stylePayoutLog() {
     var ota   = (row[C.ota-1]   || '').toString().trim();
     var notes = (row[C.notes-1] || '').toString().trim();
     var fw, fs, fc;
-    if (notes.startsWith('↳')) {
+    if (notes.startsWith('↳') || isSplitSubRow(row)) {
       fw = 'normal'; fs = 'italic'; fc = '#444444';
     } else if (ota.startsWith('SCB')) {
       fw = 'bold';   fs = 'normal'; fc = '#000000';
@@ -2361,6 +2391,7 @@ function fillMissingCiCoFromBookingID() {
     if (ci && co) continue;
     var bidRaw = (data[i][pBID] || '').toString();
     var bids = bidRaw.split(',').map(function(b){ return b.trim(); }).filter(Boolean);
+    if (bids.length > 1) continue; // merged multi-booking settlement row, no single CI/CO applies
     var info = null;
     for (var j = 0; j < bids.length; j++) {
       if (bidMap[bids[j]]) { info = bidMap[bids[j]]; break; }
