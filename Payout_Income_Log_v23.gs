@@ -2826,7 +2826,8 @@ function exportToGitHub() {
 
   var files = [
     { sheet: 'Payout_Income_Log', path: 'data/payout_income_log.json' },
-    { sheet: 'Bank_Ledger',       path: 'data/bank_ledger.json'       }
+    { sheet: 'Bank_Ledger',       path: 'data/bank_ledger.json'       },
+    { sheet: 'Sheet1',            path: 'data/sheet1.json'            }
   ];
 
   files.forEach(function(f) {
