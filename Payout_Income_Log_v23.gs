@@ -1978,7 +1978,7 @@ function styleSheet1(){
     var roomNum = cv.split(/\s+/)[0];
     var typeName = ROOM_TYPE_MAP[roomNum];
     if (typeName && ROOM_COLORS[typeName]){
-      cellA.setBackground(ROOM_COLORS[typeName].bg)
+      sh.getRange(r,1,1,2).setBackground(ROOM_COLORS[typeName].bg)
            .setFontColor(ROOM_COLORS[typeName].font)
            .setFontWeight('bold');
     }
