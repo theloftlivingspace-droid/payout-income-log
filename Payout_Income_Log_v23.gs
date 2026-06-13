@@ -2205,6 +2205,27 @@ function matchSCBtoOTA(sheet) {
       var gkey=grossStr+'|'+dt+'|Airbnb';
       if (!airbnbBatches[gkey]) airbnbBatches[gkey]=airbnbBatches[key];
     }
+    // ── เพิ่ม: key แยกรายตัว สำหรับแต่ละ row (กรณี SCB โอนแยกหลาย transfer
+    //    ในวันเดียวกัน แต่ Airbnb ส่ง payout email หลายฉบับคนละยอด เช่น
+    //    extension/booking ซ้ำ conf เดิม) → ให้ match ทีละ row ได้ด้วย
+    rows.forEach(function(r) {
+      var rNetStr=(Math.round(r.net*100)/100).toFixed(2);
+      var rKey=rNetStr+'|'+dt+'|Airbnb';
+      if (!airbnbBatches[rKey]) {
+        airbnbBatches[rKey]={
+          guests:[r.guest], confs:[r.conf], nets:[r.netStr],
+          date:dt, total:rNetStr
+        };
+      }
+      var rGrossStr=(Math.round(r.total*100)/100).toFixed(2);
+      var rGkey=rGrossStr+'|'+dt+'|Airbnb';
+      if (!airbnbBatches[rGkey]) {
+        airbnbBatches[rGkey]={
+          guests:[r.guest], confs:[r.conf], nets:[r.netStr],
+          date:dt, total:rGrossStr
+        };
+      }
+    });
   });
 
   var tripNets={}, expediaNets={};
