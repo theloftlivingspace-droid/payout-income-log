@@ -106,7 +106,6 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync
   { bid:'SCB-2026-04-21-3760.79', room:'300' },  // 辉 宫 (HMKSMSFWQJ) — stale multi-room "363, 203"
   { bid:'SCB-2026-04-25-7269.75', room:'203' },  // Денис Колескников (HMHY2NAW82) — stale multi-room
-  { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
