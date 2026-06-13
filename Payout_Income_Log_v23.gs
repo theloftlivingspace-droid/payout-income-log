@@ -634,7 +634,8 @@ function parseSCBEmail(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MATCH SCB → OTAfunction buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
+// MATCH SCB → OTA
+function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
                       refIds, guests, nets, detailByConf, detailByBid, payType) {
 
   // ✅ โหลด Sheet1 สำหรับ fallback ci/co/nights
@@ -867,9 +868,7 @@ function normG(s) {
 
 // ═══════════════════════════════════════════════════════════════
 // APPLY MANUAL ROOM FIXES
-// ═══════════════════════════════════════════════════════════════log('  ไม่มี check-out: ' + noCO);
-  });
-}
+// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // REBUILD BANK_LEDGER
@@ -1362,7 +1361,8 @@ function manualMatchSCBtoTrip(){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SHEET1 STYLEfunction doGet(e){
+// ═══════════════════════════════════════════════════════════════
+function doGet(e){
   var p=e&&e.parameter?e.parameter:{};
   if (p.page==='dashboard'){
     return HtmlService.createHtmlOutputFromFile('LoftDashboard')
@@ -1839,7 +1839,8 @@ function debugUnresolvedRooms(){
 
 
 // ═══════════════════════════════════════════════════════════════
-// OVERRIDE: syncSCBTotalRooms — skip total rows whose bid is in MANUAL_ROOM_FIXESfunction applyManualRoomFixes() {
+// OVERRIDE: syncSCBTotalRooms — skip total rows whose bid is in MANUAL_ROOM_FIXES
+function applyManualRoomFixes() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var paySheet = ss.getSheetByName(TAB_NAME);
   if (!paySheet) return;
