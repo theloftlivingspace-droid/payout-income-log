@@ -103,8 +103,7 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HM29NH5XYT', room:'103' },  // Nick Laschet / Airbnb (Jun)
   { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
-  { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
-  { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
+  { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
@@ -1911,14 +1910,26 @@ function applyManualRoomFixes() {
 
   var fixed = 0;
 
+  // pre-build: bids ที่มี total row (conf มี comma) → ใช้ skip sub-rows
+  // sub-row = SCB row ที่ bid ตรงกับ total row และ conf เดี่ยว (ไม่มี comma)
+  var bidHasTotal = {};
+  data.forEach(function(row){
+    var ota  = (row[pOTA]  || '').toString().trim();
+    var bid  = (row[pBid]  || '').toString().trim();
+    var conf = (row[pConf] || '').toString().trim();
+    if (ota.startsWith('SCB') && bid && conf.indexOf(',') >= 0) bidHasTotal[bid] = true;
+  });
+
   for (var i = 0; i < data.length; i++) {
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
-    if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip sub-rows
-    // skip SCB total rows ของ multi-guest batch (conf เป็น comma-joined list)
-    // เพราะห้องของ total row ต้องเป็น merged list จาก sub-rows (จัดการโดย syncSCBTotalRooms)
-    // ไม่ใช่ห้องเดี่ยวของ guest คนเดียวจาก MANUAL_ROOM_FIXES
-    if (otaVal.startsWith('SCB') && ((data[i][pConf]||'').toString().trim().indexOf(',') >= 0)) continue;
+    var bidVal   = (data[i][pBid]   || '').toString().trim();
+    var confVal  = (data[i][pConf]  || '').toString().trim();
+    if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip ↳ sub-rows (legacy)
+    // skip SCB sub-rows (bid มี total row + conf เดี่ยว) — ห้องของ sub-row ต้องมาจาก Airbnb source เท่านั้น
+    if (otaVal.startsWith('SCB') && bidHasTotal[bidVal] && confVal.indexOf(',') < 0) continue;
+    // skip SCB total rows (conf มี comma) — ห้องต้องเป็น merged list จาก syncSCBTotalRooms
+    if (otaVal.startsWith('SCB') && confVal.indexOf(',') >= 0) continue;
 
     var curRoom = (data[i][pRoom] || '').toString().trim();
     var bid   = (data[i][pBid]   || '').toString().trim();
