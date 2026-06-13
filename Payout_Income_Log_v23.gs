@@ -174,6 +174,7 @@ function quickReformat() {
   matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  fixSubRowRooms(sheet);
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
   fillMissingCiCoFromBookingID();
@@ -260,6 +261,7 @@ function fullRebuild() {
   matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  fixSubRowRooms(sheet);
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
   fillMissingCiCoFromBookingID();
@@ -307,6 +309,7 @@ function dailyEmailSync() {
   matchBookingComSCB();
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  fixSubRowRooms(sheet);
   syncSCBTotalRooms();
   fillMissingCiCoFromPatch();
   fillMissingCiCoFromBookingID();
@@ -1244,6 +1247,7 @@ function fullSyncAndLedger() {
   matchSCBtoOTA(paySheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
+  fixSubRowRooms(paySheet);
   syncSCBTotalRooms();
   rebuildBankLedger();
   SpreadsheetApp.getActiveSpreadsheet()
@@ -2134,6 +2138,53 @@ function syncSCBTotalRooms() {
     }
   }
   Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FIX SUB-ROW ROOMS — sub-rows (↳) ของ SCB multi-booking batch
+// ควรมีห้องของ "guest นั้นคนเดียว" (จาก Airbnb row ตัวจริง)
+// ไม่ใช่ห้องรวมทุกคนใน batch (ซึ่งบางครั้งถูกเขียนผิดมาจากรอบ match เก่า)
+// ═══════════════════════════════════════════════════════════════
+function fixSubRowRooms(sheet) {
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+
+  // map: confCode (single) -> room จาก Airbnb row จริง
+  var roomByConf = {};
+  data.forEach(function(row){
+    var ota=(row[C.ota-1]||'').toString().trim();
+    if (ota!=='Airbnb') return;
+    var conf=(row[C.conf-1]||'').toString().trim();
+    var room=(row[C.room-1]||'').toString().trim();
+    if (conf && /^[A-Z0-9]{8,12}$/.test(conf) && isValidRoom(room)) {
+      roomByConf[conf]=cleanRoom(room);
+    }
+  });
+
+  var fixed=0;
+  for (var i=0;i<data.length;i++) {
+    var ota  =(data[i][C.ota-1]  ||'').toString().trim();
+    var notes=(data[i][C.notes-1]||'').toString().trim();
+    if (!ota.startsWith('SCB') || !notes.startsWith('\u21b3')) continue;
+
+    var conf=(data[i][C.conf-1]||'').toString().trim();
+    var curRoom=(data[i][C.room-1]||'').toString().trim();
+    var correctRoom=roomByConf[conf];
+    if (!correctRoom) continue;
+    if (curRoom===correctRoom) continue;
+    // ถ้า curRoom เป็น multi-room ที่มี correctRoom รวมอยู่ (เช่น "103, 205, 209, 214")
+    // หรือเป็นค่าว่าง/invalid → แก้เป็น correctRoom
+    var curParts=curRoom.split(',').map(function(s){return s.trim();});
+    if (curRoom===correctRoom) continue;
+    if (curParts.length>1 || !isValidRoom(curRoom)) {
+      sheet.getRange(i+2, C.room).setValue(correctRoom);
+      data[i][C.room-1]=correctRoom;
+      fixed++;
+      Logger.log('fixSubRowRooms: row '+(i+2)+' conf='+conf+' '+curRoom+' -> '+correctRoom);
+    }
+  }
+  Logger.log('fixSubRowRooms: '+fixed+' rows fixed');
 }
 
 // ═══════════════════════════════════════════════════════════════
