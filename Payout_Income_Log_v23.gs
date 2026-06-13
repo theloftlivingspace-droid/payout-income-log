@@ -194,7 +194,7 @@ function fullRebuild() {
   // ── fetch เฉพาะ rows ใหม่ ────────────────────────────────────
   var newRows = [];
   var sources = [
-    { q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:parseAirbnbEmail, lim:100 },
+    { q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:function(m){return parseAirbnbEmail(m, existing);}, lim:100 },
     { q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
     { q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
   ];
@@ -283,7 +283,7 @@ function dailyEmailSync() {
   var existing = getExistingIds(sheet);
   var newRows = [];
   var searches = [
-    {q:'from:automated@airbnb.com subject:"sent a payout" after:'+since, fn:parseAirbnbEmail},
+    {q:'from:automated@airbnb.com subject:"sent a payout" after:'+since, fn:function(m){return parseAirbnbEmail(m, existing);}},
     {q:'from:no-reply@app.littlehotelier.com after:'+since,              fn:parseLHEmail},
     {q:'from:noreply_htl@trip.com after:'+since,                         fn:parseTripEmail},
     {q:'from:No_reply_scbbusinessalert@scb.co.th after:'+since,          fn:parseSCBEmail}
@@ -392,7 +392,7 @@ function fetchAndParse(q, limit, fn) {
 // ═══════════════════════════════════════════════════════════════
 // AIRBNB PARSER
 // ═══════════════════════════════════════════════════════════════
-function parseAirbnbEmail(msg) {
+function parseAirbnbEmail(msg, existing) {
   var raw = msg.getPlainBody();
   var dt  = fmtDate(msg.getDate());
   if (raw.indexOf('was sent') < 0) return [];
@@ -448,11 +448,19 @@ function parseAirbnbEmail(msg) {
     }
 
     // conf ใน AIRBNB_EXTENSIONS → ใช้ checkOut เป็น suffix เพื่อแยก payout หลายครั้ง
-    var extSuffix = (confCode && AIRBNB_EXTENSIONS[confCode] && checkOut)
+    // หรือถ้า ABB-{confCode} มีอยู่แล้วใน sheet (existing) → ถือว่าเป็น payout ครั้งที่ 2+ ของ conf เดิม
+    //   (เช่น แขกต่อที่พัก/จองซ้ำด้วย conf เดียวกัน) → auto-suffix ด้วย checkOut เช่นกัน
+    var baseBookingId = confCode ? 'ABB-'+confCode : '';
+    var isDuplicateConf = confCode && ((existing && existing.has(baseBookingId)) || rows.some(function(r){return r.bookingId===baseBookingId;}));
+    var extSuffix = (confCode && checkOut && (AIRBNB_EXTENSIONS[confCode] || isDuplicateConf))
       ? '-EXT-'+checkOut.replace(/-/g,'') : '';
     var bookingId = confCode
       ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
       : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
+    // ป้องกัน collision รอบที่ 3+ ของ conf+checkOut เดียวกัน (กรณีหายากมาก)
+    if (confCode && !isRes && ((existing && existing.has(bookingId)) || rows.some(function(r){return r.bookingId===bookingId;}))) {
+      bookingId += '-'+dt.replace(/-/g,'');
+    }
 
     rows.push(makeRow('Airbnb',dt,bookingId,confCode,
       guest, roomFromText(listLine),
