@@ -104,6 +104,8 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync
+  { bid:'SCB-2026-04-21-3760.79', room:'300' },  // 辉 宫 (HMKSMSFWQJ) — stale multi-room "363, 203"
+  { bid:'SCB-2026-04-25-7269.75', room:'203' },  // Денис Колескников (HMHY2NAW82) — stale multi-room
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
@@ -2158,14 +2160,15 @@ function fixSubRowRooms(sheet) {
   if (last < 2) return;
   var data = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
 
-  // map: confCode (single Airbnb) -> correct room
+  // map: confCode (single) -> correct room จาก non-SCB rows (Airbnb, Trip.com, Booking.com ฯลฯ)
   var roomByConf = {};
   data.forEach(function(row){
     var ota  = (row[C.ota-1]  ||'').toString().trim();
     var conf = (row[C.conf-1] ||'').toString().trim();
     var room = (row[C.room-1] ||'').toString().trim();
-    if (ota !== 'Airbnb') return;
-    if (conf && /^[A-Z0-9]{8,12}$/.test(conf) && isValidRoom(room)) {
+    if (ota.startsWith('SCB')) return;  // skip SCB rows ทุกชนิด
+    if (!conf || conf.indexOf(',') >= 0) return;  // skip empty or multi-conf
+    if (isValidRoom(room) && !roomByConf[conf]) {
       roomByConf[conf] = cleanRoom(room);
     }
   });
