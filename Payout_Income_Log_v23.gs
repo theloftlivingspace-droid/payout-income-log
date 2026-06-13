@@ -55,6 +55,7 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues
   { conf:'HM9X2AW3R3', room:'113' },  // Eiji Uenaka
   { conf:'HMTZCKN2XM', room:'214' },  // Dogukan Kaner
+  { conf:'HM3WK2RRJD', room:'210' },  // Errol Cox — stale "203, 204" sub-row data, Sheet1 confirms 210 Radiance
   { conf:'HMYD8PBRFR', room:'214' },  // La'Tavia Antrice
   { conf:'HMCTA5TJ35', room:'113' },  // Nihel Ben Naceur
   { conf:'HM4RDKF888', room:'214' },  // Sarah Carrington
