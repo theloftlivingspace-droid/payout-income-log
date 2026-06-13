@@ -2195,16 +2195,30 @@ function fixSubRowRooms(sheet) {
     if (!ota.startsWith('SCB') || !bid || !bidHasTotal[bid] || conf.indexOf(',') >= 0) continue;
 
     var correctRoom = roomByConf[conf];
-    if (!correctRoom || curRoom === correctRoom) continue;
+    var curNotes = (data[i][C.notes-1] ||'').toString().trim();
+    var needRoomFix = correctRoom && curRoom !== correctRoom &&
+                      (curRoom.split(',').length > 1 || !isValidRoom(curRoom));
+    // ถ้า notes ของ sub-row ขึ้นต้นด้วย ✅ แทน ↳ → เป็น sub-row ที่ถูกสร้างผิด format
+    // ต้องแก้ notes ให้ขึ้นต้นด้วย ↳ และแก้ room ด้วย
+    var needNotesFix = !curNotes.startsWith('\u21b3') && curNotes.startsWith('\u2705');
 
-    // only fix if curRoom is multi or invalid (wrong); leave single valid rooms alone
-    var curParts = curRoom.split(',').map(function(s){ return s.trim(); });
-    if (curParts.length > 1 || !isValidRoom(curRoom)) {
+    if (!needRoomFix && !needNotesFix) continue;
+
+    if (needRoomFix) {
       sheet.getRange(i+2, C.room).setValue(correctRoom);
       data[i][C.room-1] = correctRoom;
-      fixed++;
-      Logger.log('fixSubRowRooms: row '+(i+2)+' conf='+conf+' "'+curRoom+'" → "'+correctRoom+'"');
     }
+    if (needNotesFix) {
+      // แปลง "✅ Airbnb payout | Guest(conf) NET ฿X | ..." → "↳ Guest (conf) NET ฿X"
+      var netMatch = curNotes.match(/NET\s*฿([\d,\.]+)/);
+      var netStr = netMatch ? netMatch[1] : '';
+      var guestPart = conf && netStr ? (data[i][C.guest-1]||'').toString().trim() : '';
+      var newNote = '\u21b3 ' + (guestPart||conf) + ' (' + conf + ') NET \u0e3f' + netStr;
+      sheet.getRange(i+2, C.notes).setValue(newNote);
+      data[i][C.notes-1] = newNote;
+    }
+    fixed++;
+    Logger.log('fixSubRowRooms: row '+(i+2)+' conf='+conf+(needRoomFix?' room "'+curRoom+'"→"'+(correctRoom||'?')+'"':'')+(needNotesFix?' notes→↳':''));
   }
   Logger.log('fixSubRowRooms: '+fixed+' rows fixed');
 }
