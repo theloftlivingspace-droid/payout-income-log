@@ -190,11 +190,12 @@ function quickReformat() {
 function fullRebuild() {
   var sheet    = setupSheet();
   var existing = getExistingIds(sheet);   // Set ของ bookingId ที่มีอยู่แล้ว
+  var confCheckouts = getExistingAirbnbCheckouts(sheet);
 
   // ── fetch เฉพาะ rows ใหม่ ────────────────────────────────────
   var newRows = [];
   var sources = [
-    { q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:function(m){return parseAirbnbEmail(m, existing);}, lim:100 },
+    { q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:function(m){return parseAirbnbEmail(m, existing, confCheckouts);}, lim:100 },
     { q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
     { q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
   ];
@@ -281,9 +282,10 @@ function dailyEmailSync() {
   var since = Utilities.formatDate(yday,'Asia/Bangkok','yyyy/MM/dd');
   var sheet = setupSheet();
   var existing = getExistingIds(sheet);
+  var confCheckouts = getExistingAirbnbCheckouts(sheet);
   var newRows = [];
   var searches = [
-    {q:'from:automated@airbnb.com subject:"sent a payout" after:'+since, fn:function(m){return parseAirbnbEmail(m, existing);}},
+    {q:'from:automated@airbnb.com subject:"sent a payout" after:'+since, fn:function(m){return parseAirbnbEmail(m, existing, confCheckouts);}},
     {q:'from:no-reply@app.littlehotelier.com after:'+since,              fn:parseLHEmail},
     {q:'from:noreply_htl@trip.com after:'+since,                         fn:parseTripEmail},
     {q:'from:No_reply_scbbusinessalert@scb.co.th after:'+since,          fn:parseSCBEmail}
@@ -392,7 +394,7 @@ function fetchAndParse(q, limit, fn) {
 // ═══════════════════════════════════════════════════════════════
 // AIRBNB PARSER
 // ═══════════════════════════════════════════════════════════════
-function parseAirbnbEmail(msg, existing) {
+function parseAirbnbEmail(msg, existing, confCheckouts) {
   var raw = msg.getPlainBody();
   var dt  = fmtDate(msg.getDate());
   if (raw.indexOf('was sent') < 0) return [];
@@ -448,17 +450,31 @@ function parseAirbnbEmail(msg, existing) {
     }
 
     // conf ใน AIRBNB_EXTENSIONS → ใช้ checkOut เป็น suffix เพื่อแยก payout หลายครั้ง
-    // หรือถ้า ABB-{confCode} มีอยู่แล้วใน sheet (existing) → ถือว่าเป็น payout ครั้งที่ 2+ ของ conf เดิม
-    //   (เช่น แขกต่อที่พัก/จองซ้ำด้วย conf เดียวกัน) → auto-suffix ด้วย checkOut เช่นกัน
+    // หรือถ้า confCode นี้มี row อยู่แล้วใน sheet (confCheckouts):
+    //   - ถ้า checkOut ตรงกับ row เดิม → re-parse ของอีเมลเดิม, ใช้ id เดิม (caller จะ skip ให้)
+    //   - ถ้า checkOut ไม่ตรง → payout ครั้งใหม่ (extension/จองซ้ำ) → สร้าง EXT row
     var baseBookingId = confCode ? 'ABB-'+confCode : '';
-    var isDuplicateConf = confCode && ((existing && existing.has(baseBookingId)) || rows.some(function(r){return r.bookingId===baseBookingId;}));
-    var extSuffix = (confCode && checkOut && (AIRBNB_EXTENSIONS[confCode] || isDuplicateConf))
-      ? '-EXT-'+checkOut.replace(/-/g,'') : '';
-    var bookingId = confCode
-      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
-      : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
-    // ป้องกัน collision รอบที่ 3+ ของ conf+checkOut เดียวกัน (กรณีหายากมาก)
-    if (confCode && !isRes && ((existing && existing.has(bookingId)) || rows.some(function(r){return r.bookingId===bookingId;}))) {
+    var extBookingId  = (confCode && checkOut) ? baseBookingId+'-EXT-'+checkOut.replace(/-/g,'') : '';
+    var inExisting = function(id){ return id && ((existing && existing.has(id)) || rows.some(function(r){return r.bookingId===id;})); };
+    var coKnownForConf = confCode && checkOut && confCheckouts && confCheckouts[confCode] && confCheckouts[confCode][checkOut];
+
+    var bookingId;
+    if (!confCode) {
+      bookingId = 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
+    } else if (isRes) {
+      bookingId = baseBookingId+'-RES-'+dt.replace(/-/g,'');
+    } else if (coKnownForConf) {
+      // checkOut นี้เคยมี Airbnb row ของ conf นี้แล้ว → re-parse ของอีเมลเดิม
+      // หา id ที่ตรงกับ checkOut นี้ (อาจเป็น base id หรือ EXT id)
+      bookingId = inExisting(baseBookingId) && !inExisting(extBookingId) ? baseBookingId : (extBookingId || baseBookingId);
+    } else if (AIRBNB_EXTENSIONS[confCode] || inExisting(baseBookingId)) {
+      // payout ครั้งที่ 2+ ของ conf เดิม (extension/จองซ้ำ) ด้วย checkOut ใหม่ที่ไม่เคยเห็น
+      bookingId = extBookingId || baseBookingId;
+    } else {
+      bookingId = baseBookingId;
+    }
+    // ป้องกัน collision เหลือ (กรณีหายากมาก)
+    if (confCode && !isRes && !coKnownForConf && inExisting(bookingId)) {
       bookingId += '-'+dt.replace(/-/g,'');
     }
 
@@ -1745,6 +1761,26 @@ function getExistingIds(sheet){
   var last=sheet.getLastRow();
   if (last<2) return new Set();
   return new Set(sheet.getRange(2,3,last-1,1).getValues().flat().filter(Boolean));
+}
+// Map: confCode -> Set of checkOut dates (ISO) ที่มี Airbnb row อยู่แล้ว
+// ใช้เช็คว่า payout ที่ parse มาใหม่เป็น re-parse ของอีเมลเดิม (conf+checkOut ตรงกัน) หรือเป็น extension ใหม่
+function getExistingAirbnbCheckouts(sheet){
+  var last=sheet.getLastRow();
+  var map={};
+  if (last<2) return map;
+  var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+  data.forEach(function(row){
+    var ota=(row[C.ota-1]||'').toString();
+    var conf=(row[C.conf-1]||'').toString().trim();
+    var co=row[C.co-1];
+    if (ota!=='Airbnb' || !conf || !co) return;
+    var coStr = (co instanceof Date)
+      ? Utilities.formatDate(co,'Asia/Bangkok','yyyy-MM-dd')
+      : co.toString().split('T')[0];
+    if (!map[conf]) map[conf]={};
+    map[conf][coStr]=true;
+  });
+  return map;
 }
 function appendRow(sheet,row){
   var r=sheet.getLastRow()+1;
