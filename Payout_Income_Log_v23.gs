@@ -2092,56 +2092,49 @@ function syncSCBTotalRooms() {
     if (fx.conf) manualConfs[fx.conf] = fx.room;
   });
 
-  var i = 0;
-  while (i < data.length) {
-    var ota   = (data[i][pOTA]   || '').toString().trim();
-    var notes = (data[i][pNotes] || '').toString().trim();
-    if (ota.startsWith('SCB') && !notes.startsWith('\u21b3')) {
-      var bid  = (data[i][pBid]  || '').toString().trim();
-      var conf = (data[i][pConf] || '').toString().trim();
-
-      // skip if bid OR conf is pinned in MANUAL_ROOM_FIXES
-      if (manualBids[bid] !== undefined || manualConfs[conf] !== undefined) {
-        Logger.log('syncSCBTotalRooms: skip manual-fixed bid=' + bid + ' conf=' + conf);
-        var j = i + 1;
-        while (j < data.length) {
-          var sn = (data[j][pNotes] || '').toString().trim();
-          var so = (data[j][pOTA]   || '').toString().trim();
-          if (!so.startsWith('SCB') || !sn.startsWith('\u21b3')) break;
-          j++;
-        }
-        i = j;
-        continue;
-      }
-
-      // collect rooms from sub-rows ONLY
-      var rooms = [];
-      var totalRoom = (data[i][pRoom] || '').toString().trim();
-      var j = i + 1;
-      while (j < data.length) {
-        var subNotes = (data[j][pNotes] || '').toString().trim();
-        var subOTA   = (data[j][pOTA]   || '').toString().trim();
-        if (!subOTA.startsWith('SCB') || !subNotes.startsWith('\u21b3')) break;
-        var subRoom = (data[j][pRoom] || '').toString().trim();
-        if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
-        j++;
-      }
-      var hadSubRows = (j > i + 1);
-      if (hadSubRows && rooms.length > 1) {
-        var merged = rooms.join(', ');
-        if (merged !== totalRoom) {
-          sheet.getRange(i+2, pRoom+1).setValue(merged);
-          data[i][pRoom] = merged;
-          fixed++;
-          Logger.log('syncSCBTotalRooms: row '+(i+2)+' → '+merged);
-        }
-      }
-      i = j;
+  // group rows by bid → find total row (conf has comma) + sub-rows (conf no comma, same bid)
+  var bidGroups = {}; // bid → { totalIdx, subIdxs[] }
+  for (var i = 0; i < data.length; i++) {
+    var ota  = (data[i][pOTA]  || '').toString().trim();
+    var bid  = (data[i][pBid]  || '').toString().trim();
+    var conf = (data[i][pConf] || '').toString().trim();
+    if (!ota.startsWith('SCB') || !bid) continue;
+    if (!bidGroups[bid]) bidGroups[bid] = { totalIdx: -1, subIdxs: [] };
+    if (conf.indexOf(',') >= 0) {
+      bidGroups[bid].totalIdx = i;      // total row: conf มี comma
     } else {
-      i++;
+      bidGroups[bid].subIdxs.push(i);  // sub-row: conf เดี่ยว
     }
   }
-  Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
+
+  Object.keys(bidGroups).forEach(function(bid) {
+    var grp = bidGroups[bid];
+    if (grp.totalIdx < 0 || grp.subIdxs.length === 0) return; // ไม่ใช่ multi-guest batch
+
+    var tConf = (data[grp.totalIdx][pConf] || '').toString().trim();
+    // skip if pinned in MANUAL_ROOM_FIXES
+    if (manualBids[bid] !== undefined || manualConfs[tConf] !== undefined) {
+      Logger.log('syncSCBTotalRooms: skip manual-fixed bid=' + bid + ' conf=' + tConf);
+      return;
+    }
+
+    // collect rooms from sub-rows
+    var rooms = [];
+    grp.subIdxs.forEach(function(si) {
+      var subRoom = (data[si][pRoom] || '').toString().trim();
+      if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+    });
+
+    if (rooms.length < 2) return; // all same room or only 1 valid → leave as-is
+    var merged = rooms.join(', ');
+    var totalRoom = (data[grp.totalIdx][pRoom] || '').toString().trim();
+    if (merged === totalRoom) return;
+    sheet.getRange(grp.totalIdx + 2, pRoom + 1).setValue(merged);
+    data[grp.totalIdx][pRoom] = merged;
+    fixed++;
+    Logger.log('syncSCBTotalRooms: row ' + (grp.totalIdx + 2) + ' bid=' + bid + ' → ' + merged);
+  });
+  Logger.log('syncSCBTotalRooms: ' + fixed + ' rows updated');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2154,38 +2147,50 @@ function fixSubRowRooms(sheet) {
   if (last < 2) return;
   var data = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
 
-  // map: confCode (single) -> room จาก Airbnb row จริง
+  // map: confCode (single Airbnb) -> correct room
   var roomByConf = {};
   data.forEach(function(row){
-    var ota=(row[C.ota-1]||'').toString().trim();
-    if (ota!=='Airbnb') return;
-    var conf=(row[C.conf-1]||'').toString().trim();
-    var room=(row[C.room-1]||'').toString().trim();
+    var ota  = (row[C.ota-1]  ||'').toString().trim();
+    var conf = (row[C.conf-1] ||'').toString().trim();
+    var room = (row[C.room-1] ||'').toString().trim();
+    if (ota !== 'Airbnb') return;
     if (conf && /^[A-Z0-9]{8,12}$/.test(conf) && isValidRoom(room)) {
-      roomByConf[conf]=cleanRoom(room);
+      roomByConf[conf] = cleanRoom(room);
     }
   });
 
-  var fixed=0;
-  for (var i=0;i<data.length;i++) {
-    var ota  =(data[i][C.ota-1]  ||'').toString().trim();
-    var notes=(data[i][C.notes-1]||'').toString().trim();
-    if (!ota.startsWith('SCB') || !notes.startsWith('\u21b3')) continue;
+  // find SCB sub-rows: same bid as a total row, conf has no comma (single conf)
+  // build bid → [sub-row indices]
+  var bidHasTotal = {};
+  data.forEach(function(row){
+    var ota  = (row[C.ota-1]  ||'').toString().trim();
+    var bid  = (row[C.bid-1]  ||'').toString().trim();
+    var conf = (row[C.conf-1] ||'').toString().trim();
+    if (ota.startsWith('SCB') && bid && conf.indexOf(',') >= 0) {
+      bidHasTotal[bid] = true;
+    }
+  });
 
-    var conf=(data[i][C.conf-1]||'').toString().trim();
-    var curRoom=(data[i][C.room-1]||'').toString().trim();
-    var correctRoom=roomByConf[conf];
-    if (!correctRoom) continue;
-    if (curRoom===correctRoom) continue;
-    // ถ้า curRoom เป็น multi-room ที่มี correctRoom รวมอยู่ (เช่น "103, 205, 209, 214")
-    // หรือเป็นค่าว่าง/invalid → แก้เป็น correctRoom
-    var curParts=curRoom.split(',').map(function(s){return s.trim();});
-    if (curRoom===correctRoom) continue;
-    if (curParts.length>1 || !isValidRoom(curRoom)) {
+  var fixed = 0;
+  for (var i = 0; i < data.length; i++) {
+    var ota  = (data[i][C.ota-1]  ||'').toString().trim();
+    var bid  = (data[i][C.bid-1]  ||'').toString().trim();
+    var conf = (data[i][C.conf-1] ||'').toString().trim();
+    var curRoom = (data[i][C.room-1] ||'').toString().trim();
+
+    // sub-row: SCB, same bid that has a total row, conf is single (no comma)
+    if (!ota.startsWith('SCB') || !bid || !bidHasTotal[bid] || conf.indexOf(',') >= 0) continue;
+
+    var correctRoom = roomByConf[conf];
+    if (!correctRoom || curRoom === correctRoom) continue;
+
+    // only fix if curRoom is multi or invalid (wrong); leave single valid rooms alone
+    var curParts = curRoom.split(',').map(function(s){ return s.trim(); });
+    if (curParts.length > 1 || !isValidRoom(curRoom)) {
       sheet.getRange(i+2, C.room).setValue(correctRoom);
-      data[i][C.room-1]=correctRoom;
+      data[i][C.room-1] = correctRoom;
       fixed++;
-      Logger.log('fixSubRowRooms: row '+(i+2)+' conf='+conf+' '+curRoom+' -> '+correctRoom);
+      Logger.log('fixSubRowRooms: row '+(i+2)+' conf='+conf+' "'+curRoom+'" → "'+correctRoom+'"');
     }
   }
   Logger.log('fixSubRowRooms: '+fixed+' rows fixed');
