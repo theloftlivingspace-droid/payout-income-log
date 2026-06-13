@@ -1915,6 +1915,10 @@ function applyManualRoomFixes() {
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
     if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip sub-rows
+    // skip SCB total rows ของ multi-guest batch (conf เป็น comma-joined list)
+    // เพราะห้องของ total row ต้องเป็น merged list จาก sub-rows (จัดการโดย syncSCBTotalRooms)
+    // ไม่ใช่ห้องเดี่ยวของ guest คนเดียวจาก MANUAL_ROOM_FIXES
+    if (otaVal.startsWith('SCB') && ((data[i][pConf]||'').toString().trim().indexOf(',') >= 0)) continue;
 
     var curRoom = (data[i][pRoom] || '').toString().trim();
     var bid   = (data[i][pBid]   || '').toString().trim();
