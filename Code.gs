@@ -140,7 +140,8 @@ var MANUAL_ROOM_FIXES = [
 // bookingId: ABB-CONF (payout แรก), ABB-CONF-EXT-COYYYYMMDD (ครั้งถัดไป)
 // ═══════════════════════════════════════════════════════════════
 var AIRBNB_EXTENSIONS = {
-  'HM9X2AW3R3': true  // Eiji Uenaka — extension payout
+  'HM9X2AW3R3':  true,  // Eiji Uenaka — extension payout
+  'HMZN329QRH':  true   // Igor Markov — 2nd payout ฿2,179.30 on 2026-06-14 (1st was ฿2,342.21)
 };
 
 
