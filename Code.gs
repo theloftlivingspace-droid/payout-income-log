@@ -2396,8 +2396,10 @@ function runAirbnbEmailParse() {
     var conf = (r.confCode   ||'').toString().trim();
     var bid  = (r.bookingId  ||'').toString().trim();
     // conf ใน AIRBNB_EXTENSIONS มี payout > 1 ครั้ง → เช็คแค่ bid (ไม่เช็ค conf)
+    // Resolution payouts (bid มี -RES-) → เช็คแค่ bid เช่นกัน เพราะ conf เดิมมีอยู่แล้วใน sheet
     var isExtConf = !!(conf && AIRBNB_EXTENSIONS[conf]);
-    if (isExtConf ? existingBids[bid] : (existingConfs[conf] || existingBids[bid])) {
+    var isResPayout = bid.indexOf('-RES-') >= 0;
+    if ((isExtConf || isResPayout) ? existingBids[bid] : (existingConfs[conf] || existingBids[bid])) {
       Logger.log('skip dup: '+conf+' / '+bid);
       return;
     }
