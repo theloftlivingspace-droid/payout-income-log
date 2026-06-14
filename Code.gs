@@ -1908,9 +1908,11 @@ function applyManualRoomFixes() {
       var isMultiFix = fix.room.indexOf(',') >= 0;
       var isMultiCur = curRoom.indexOf(',') >= 0;
 
-      // skip only if: current room is valid single AND fix is also single
-      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi
-      if (isValidRoom(curRoom) && !isMultiFix && !isMultiCur) continue;
+      // skip only if: current room is valid single AND fix is also single AND room is a known valid room
+      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi, OR room not in known list
+      var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
+      var curRoomKnown = KNOWN_ROOMS.indexOf(curRoom) >= 0;
+      if (isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
 
       if (curRoom === fix.room) break; // already correct, no write needed
       paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
