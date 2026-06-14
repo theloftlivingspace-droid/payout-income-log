@@ -57,6 +57,7 @@ var MANUAL_ROOM_FIXES = [
   // ── Room swap fix 2026-06-13 ──────────────────────────────────
   { conf:'BKC-seanaldcro-20260613', room:'205' },  // sean aldcroft → 205 Allure
   { conf:'ABB-maudsantoc-20260613', room:'210' },  // Maud Santocildes → 210 Radiance
+  { conf:'HMQR4QJA55', room:'205' },             // Maud Santocildes → 205 Allure (Airbnb payout)
   // ── Mycondo 363 ─────────────────────────────────────────────
   { conf:'HMRKPSAX9F', room:'363' },  // Harley Bowman
   { conf:'HMP9HW25EN', room:'363' },  // Hélèm Saouchi
