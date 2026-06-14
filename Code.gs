@@ -2396,11 +2396,9 @@ function runAirbnbEmailParse() {
   rows.forEach(function(r) {
     var conf = (r.confCode   ||'').toString().trim();
     var bid  = (r.bookingId  ||'').toString().trim();
-    // conf ใน AIRBNB_EXTENSIONS มี payout > 1 ครั้ง → เช็คแค่ bid (ไม่เช็ค conf)
-    // Resolution payouts (bid มี -RES-) → เช็คแค่ bid เช่นกัน เพราะ conf เดิมมีอยู่แล้วใน sheet
-    var isExtConf = !!(conf && AIRBNB_EXTENSIONS[conf]);
-    var isResPayout = bid.indexOf('-RES-') >= 0;
-    if ((isExtConf || isResPayout) ? existingBids[bid] : (existingConfs[conf] || existingBids[bid])) {
+    // dedup ด้วย bid เท่านั้น — bid ถูก generate unique ทุก payout (ABB-CONF, ABB-CONF-EXT-DATE, ABB-CONF-RES-DATE)
+    // ไม่ใช้ conf dedup อีกต่อไป เพราะ booking เดียวกันอาจมีหลาย payout (extension, resolution, installment)
+    if (existingBids[bid]) {
       Logger.log('skip dup: '+conf+' / '+bid);
       return;
     }
