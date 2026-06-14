@@ -1613,8 +1613,10 @@ function roomFromText(s){
   if (/luxury/.test(s))   return '300';
   // ห้องที่ชื่อเดียวมีหลายเลข → ต้อง fallback ให้ matchRoomFromSheet1 จัดการ
   // แต่ถ้า s มีเลขห้องด้วย เช่น "103 Elegance" → จับเลขก่อน
+  // จับเลขห้องเฉพาะที่รู้จัก (whitelist) ป้องกัน false positive เช่น 967 จาก listing text
+  var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
   var numFirst=s.match(/(\d{3})/);
-  if (numFirst) return numFirst[1];
+  if (numFirst && KNOWN_ROOMS.indexOf(numFirst[1])>=0) return numFirst[1];
   // ชื่อประเภทที่ไม่มีเลข → คืน ? ให้ match ทีหลัง
   if (/elegance|legacy|allure|radiance|serene|greenery|rhythm|cosy|private apartment|mycondo/.test(s)) return '?';
   return '?';
