@@ -1927,6 +1927,23 @@ function applyManualRoomFixes() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ONE-TIME FIX: normalize "Booking.com" → "Booking" in Sheet1 col E
+function fixBookingComChannel() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sh = ss.getSheetByName('Sheet1');
+  if (!sh) return;
+  var data = sh.getDataRange().getValues();
+  var fixed = 0;
+  for (var i = 1; i < data.length; i++) {
+    if ((data[i][4]||'').toString().trim() === 'Booking.com') {
+      sh.getRange(i+1, 5).setValue('Booking');
+      fixed++;
+    }
+  }
+  styleSheet1();
+  Logger.log('fixBookingComChannel: fixed ' + fixed + ' rows');
+}
+
 // OVERRIDE: styleSheet1 — fix room color match (number→type) + รอยืนยัน
 // ═══════════════════════════════════════════════════════════════
 function styleSheet1(){
