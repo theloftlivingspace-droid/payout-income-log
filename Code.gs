@@ -2209,6 +2209,17 @@ function matchSCBtoOTA(sheet) {
       var gkey=grossStr+'|'+dt+'|Airbnb';
       if (!airbnbBatches[gkey]) airbnbBatches[gkey]=airbnbBatches[key];
     }
+    // Individual per-conf keys: SCB บางครั้งโอนแยกรายการ (เช่น -RES-, -EXT-)
+    // ใส่ key สำหรับแต่ละ row เดี่ยวๆ ด้วย เพื่อให้ match 1-to-1 ได้
+    rows.forEach(function(r) {
+      var ikey=r.netStr+'|'+dt+'|Airbnb';
+      if (!airbnbBatches[ikey]) {
+        airbnbBatches[ikey]={
+          guests:[r.guest], confs:[r.conf], nets:[r.netStr],
+          date:dt, total:r.netStr
+        };
+      }
+    });
   });
 
   // Multi-date batches: รวม 2–7 วันติดกัน (Airbnb บางครั้ง batch หลาย CI date รวมกัน)
@@ -2891,4 +2902,5 @@ function parseDate_(v) {
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
+
 
