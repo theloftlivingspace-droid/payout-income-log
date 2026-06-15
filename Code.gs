@@ -2015,10 +2015,10 @@ function styleSheet1(){
     }
   });
 
-  // col B — OTA/Channel color
-  var chanData=sh.getRange(2,2,lastRow-1,1).getValues();
+  // col E — Channel color
+  var chanData=sh.getRange(2,5,lastRow-1,1).getValues();
   chanData.forEach(function(row,i){
-    var r=i+2, ch=(row[0]||'').toString().trim(), cell=sh.getRange(r,2);
+    var r=i+2, ch=(row[0]||'').toString().trim(), cell=sh.getRange(r,5);
     Object.keys(CHANNEL_COLORS).forEach(function(key){
       if (ch.toLowerCase().indexOf(key.toLowerCase())>=0)
         cell.setBackground(CHANNEL_COLORS[key].bg).setFontColor(CHANNEL_COLORS[key].font)
