@@ -388,8 +388,9 @@ function fetchSCBAlerts() {
     'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM, 200, parseSCBEmail);
 }
 function fetchAndParse(q, limit, fn) {
+  if (!q || typeof fn !== 'function') return [];
   var rows = [], seen = {};
-  GmailApp.search(q, 0, limit).forEach(function(t) {
+  GmailApp.search(q, 0, limit || 50).forEach(function(t) {
     t.getMessages().forEach(function(m) {
       try {
         fn(m).forEach(function(r) {
