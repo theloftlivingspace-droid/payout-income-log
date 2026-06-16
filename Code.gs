@@ -486,11 +486,10 @@ function parseAirbnbEmail(msg) {
 }
 
 function decodeQP(s) {
-  return s.replace(/((?:=[0-9A-Fa-f]{2})+)/g,function(match) {
+  return s.replace(/((?:=[0-9A-Fa-f]{2})+)/g, function(match) {
     try {
-      var bytes=[];
-      match.split('=').filter(Boolean).forEach(function(h){ bytes.push(parseInt(h,16)); });
-      return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+      var bytes = match.split('=').filter(Boolean).map(function(h){ return parseInt(h,16); });
+      return Utilities.newBlob(bytes).getDataAsString('UTF-8');
     } catch(e) { return match; }
   });
 }
