@@ -139,13 +139,9 @@ var MANUAL_ROOM_FIXES = [
 // AIRBNB_EXTENSIONS — conf ที่มี payout > 1 ครั้ง (แขกขออยู่ต่อ)
 // bookingId: ABB-CONF (payout แรก), ABB-CONF-EXT-COYYYYMMDD (ครั้งถัดไป)
 // ═══════════════════════════════════════════════════════════════
-// AIRBNB_EXTENSIONS — DEPRECATED: ไม่จำเป็นต้องเพิ่ม conf code ที่นี่อีกต่อไป
-// resolveAirbnbBid() จัดการ auto-suffix ให้อัตโนมัติเมื่อ net ต่างกัน
-// เก็บไว้เพื่อ backward compat กับ extSuffix logic ใน parseAirbnbEmail เท่านั้น
 var AIRBNB_EXTENSIONS = {
-  'HM9X2AW3R3':  true,  // Eiji Uenaka — extension payout (legacy)
-  'HMZN329QRH':  true,  // Igor Markov — 2nd payout ฿2,179.30 on 2026-06-14 (legacy)
-  'HMMY9NZCED':  true   // Saragba Rekom C — 2nd payout ฿1,307.52 on 2026-06-16 (auto-handled now)
+  'HM9X2AW3R3':  true,  // Eiji Uenaka — extension payout
+  'HMZN329QRH':  true   // Igor Markov — 2nd payout ฿2,179.30 on 2026-06-14 (1st was ฿2,342.21)
 };
 
 
@@ -160,7 +156,6 @@ var BOOKING_COM_SCB_MAP = [
   // { scbId: 'SCB-2026-04-02-980.93', bids: ['6148157193'] },            // ALLARD Angélique
   // { scbId: 'SCB-2026-05-26-1423.79', bids: ['6339174127'] },           // Natthaphon
   // { scbId: 'SCB-YYYY-MM-DD-AMOUNT', bids: ['BID1','BID2'], nets: ['NET1','NET2'] },  // multi
-  { scbId: 'SCB-2026-06-16-2756.73', bids: ['6506062257'], nets: ['2756.73'] },  // Shahid Hussain / room 300
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -215,40 +210,17 @@ function fullRebuild() {
     { q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
   ];
   sources.forEach(function(s) {
-    var threads;
-    try {
-      threads = GmailApp.search(s.q, 0, s.lim);
-    } catch(e) {
-      Logger.log('ERR fullRebuild search ['+s.q+']: '+e.message);
-      return;
-    }
-    threads.forEach(function(t) {
-      var msgs;
-      try {
-        msgs = t.getMessages();
-      } catch(e) {
-        Logger.log('ERR fullRebuild getMessages: '+e.message);
-        return;
-      }
-      msgs.forEach(function(m) {
+    GmailApp.search(s.q, 0, s.lim).forEach(function(t) {
+      t.getMessages().forEach(function(m) {
         try {
           s.fn(m).forEach(function(r) {
             if ((r.ota||'').startsWith('SCB') && (r.date||'') < '2026-03-01') return;
-            var bid = r.bookingId;
-            if ((r.ota||'') === 'Airbnb') {
-              bid = resolveAirbnbBid(bid, Number(r.net)||0, existing);
-              if (!bid) return; // dup จริง → skip
-              r.bookingId = bid;
-            }
-            if (!existing.has(bid)) {
-              existing.set(bid, Number(r.net)||0);
+            if (!existing.has(r.bookingId)) {
+              existing.add(r.bookingId);
               newRows.push(r);
             }
           });
-        } catch(e) {
-          var subj='?'; try{ subj=m.getSubject(); }catch(e2){}
-          Logger.log('ERR fullRebuild parse: '+e.message+' | '+subj);
-        }
+        } catch(e) { Logger.log('ERR fullRebuild: '+e.message+' | '+m.getSubject()); }
       });
     });
   });
@@ -259,26 +231,12 @@ function fullRebuild() {
     'subject:"Booking no" after:'+SEARCH_FROM,
     'from:noreply_htl@trip.com after:'+SEARCH_FROM
   ].forEach(function(q) {
-    var threads;
-    try {
-      threads = GmailApp.search(q, 0, 50);
-    } catch(e) {
-      Logger.log('ERR Trip search ['+q+']: '+e.message);
-      return;
-    }
-    threads.forEach(function(t) {
-      var msgs;
-      try {
-        msgs = t.getMessages();
-      } catch(e) {
-        Logger.log('ERR Trip getMessages: '+e.message);
-        return;
-      }
-      msgs.forEach(function(m) {
+    GmailApp.search(q, 0, 50).forEach(function(t) {
+      t.getMessages().forEach(function(m) {
         try {
           parseTripEmail(m).forEach(function(r) {
             if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-              tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
+              tripSeen[r.bookingId] = true; existing.add(r.bookingId); newRows.push(r);
             }
           });
         } catch(e) { Logger.log('ERR Trip: '+e.message); }
@@ -292,7 +250,7 @@ function fullRebuild() {
             if (!/Reservation no\.|trip\.com/i.test(text)) return;
             parseTripText(text, fmtDate(m.getDate()), m.getSubject()).forEach(function(r) {
               if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-                tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
+                tripSeen[r.bookingId] = true; existing.add(r.bookingId); newRows.push(r);
               }
             });
           });
@@ -346,13 +304,7 @@ function dailyEmailSync() {
       t.getMessages().forEach(function(m) {
         try { s.fn(m).forEach(function(r) {
           if ((r.ota||'').startsWith('SCB') && (r.date||'') < '2026-03-01') return;
-          var bid2 = r.bookingId;
-          if ((r.ota||'') === 'Airbnb') {
-            bid2 = resolveAirbnbBid(bid2, Number(r.net)||0, existing);
-            if (!bid2) return;
-            r.bookingId = bid2;
-          }
-          if (!existing.has(bid2)) { newRows.push(r); existing.set(bid2, Number(r.net)||0); }
+          if (!existing.has(r.bookingId)) { newRows.push(r); existing.add(r.bookingId); }
         }); } catch(e){ Logger.log('ERR: '+e.message); }
       });
     });
@@ -435,9 +387,8 @@ function fetchSCBAlerts() {
     'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM, 200, parseSCBEmail);
 }
 function fetchAndParse(q, limit, fn) {
-  if (!q || typeof fn !== 'function') return [];
   var rows = [], seen = {};
-  GmailApp.search(q, 0, limit || 50).forEach(function(t) {
+  GmailApp.search(q, 0, limit).forEach(function(t) {
     t.getMessages().forEach(function(m) {
       try {
         fn(m).forEach(function(r) {
@@ -534,10 +485,11 @@ function parseAirbnbEmail(msg) {
 }
 
 function decodeQP(s) {
-  return s.replace(/((?:=[0-9A-Fa-f]{2})+)/g, function(match) {
+  return s.replace(/((?:=[0-9A-Fa-f]{2})+)/g,function(match) {
     try {
-      var bytes = match.split('=').filter(Boolean).map(function(h){ return parseInt(h,16); });
-      return Utilities.newBlob(bytes).getDataAsString('UTF-8');
+      var bytes=[];
+      match.split('=').filter(Boolean).forEach(function(h){ bytes.push(parseInt(h,16)); });
+      return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
     } catch(e) { return match; }
   });
 }
@@ -732,10 +684,32 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   var allConfs=[],allRooms=[],allGuests=[];
   var earliest=null,latest=null,totalNights=0;
 
+  // ✅ Dedupe: same conf code appearing multiple times (split Airbnb payout, e.g. resolution + main)
+  // → merge into single sub-row with summed NET instead of duplicating
+  var mergedEntries=[];
   for (var j=0;j<guests.length;j++) {
     var ref   =(refIds[j]||'').toString().trim();
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
+    // Check if same conf already added
+    var existing=null;
+    for (var m=0;m<mergedEntries.length;m++) {
+      if (mergedEntries[m].ref===ref) { existing=mergedEntries[m]; break; }
+    }
+    if (existing) {
+      existing.net+=net;
+      existing.netStr=fmtAmt(existing.net);
+      existing.netParts.push(nets[j]);
+    } else {
+      mergedEntries.push({ref:ref,guest:guest,net:net,netStr:nets[j],netParts:[nets[j]]});
+    }
+  }
+
+  for (var j=0;j<mergedEntries.length;j++) {
+    var ref   =mergedEntries[j].ref;
+    var guest =mergedEntries[j].guest;
+    var net   =mergedEntries[j].net;
+    var netStr=mergedEntries[j].netStr;
     var detail=detailByConf[ref]||detailByBid[ref]||{};
     var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
     var ci    =dateStr(detail.ci);
@@ -746,9 +720,13 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     if (co) { var coD=new Date(co); if (!latest  ||coD>latest  ) latest  =coD; }
     allConfs.push(ref); allRooms.push(room); allGuests.push(guest);
 
+    // Show breakdown if split (e.g. ↳ Nihel NET ฿81.17 + ฿2638.54 = ฿2719.71)
+    var netLabel=mergedEntries[j].netParts.length>1
+      ?mergedEntries[j].netParts.join(' + ')+' = ฿'+netStr
+      :'฿'+netStr;
     var subRow=makeRow(scbOTA,scbDate,scbBid,ref,
       guest,room,ci,co,nts,'','',net,'',
-      '↳ '+guest+' ('+ref+') NET ฿'+net);
+      '↳ '+guest+' ('+ref+') NET '+netLabel);
     subRow._isTotal=false; subRow._isSingle=false;
     rows.push(subRow);
   }
@@ -758,12 +736,17 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   var ciStr=earliest?Utilities.formatDate(earliest,'Asia/Bangkok','yyyy-MM-dd'):'';
   var coStr=latest  ?Utilities.formatDate(latest,  'Asia/Bangkok','yyyy-MM-dd'):'';
   var nStr =totalNights>0?totalNights:'';
-  var totalNote='✅ '+payType+' | '+allGuests.map(function(g,k){
-    return g+'('+allConfs[k]+') NET ฿'+nets[k];
+  // ✅ Use mergedEntries for totalNote to avoid duplicate conf/guest display
+  var totalNote='✅ '+payType+' | '+mergedEntries.map(function(e){
+    var label=e.netParts.length>1?e.netParts.join('+')+'='+e.netStr:e.netStr;
+    return e.guest+'('+e.ref+') NET ฿'+label;
   }).join(' | ')+' | Value Date: '+scbDate;
 
-  var totalRow=makeRow(scbOTA,scbDate,scbBid,allConfs.filter(Boolean).join(', '),
-    allGuests.join(', '), uniqueRooms.length>0?uniqueRooms.join(', '):'',
+  // ✅ Dedupe allConfs/allGuests for total row display
+  var uniqueConfs=[],uniqueGuests=[];
+  allConfs.forEach(function(c,k){ if(c&&uniqueConfs.indexOf(c)<0){ uniqueConfs.push(c); uniqueGuests.push(allGuests[k]); } });
+  var totalRow=makeRow(scbOTA,scbDate,scbBid,uniqueConfs.filter(Boolean).join(', '),
+    uniqueGuests.join(', '), uniqueRooms.length>0?uniqueRooms.join(', '):'',
     '','','',
     scbAmt,'',scbAmt,'✅ Matched - '+payType,totalNote);
   totalRow._isTotal=true; totalRow._isSingle=false;
@@ -892,7 +875,6 @@ function matchRoomFromSheet1() {
 function findRoom(guestRaw,ci,byGuest) {
   var CI_WINDOW_EXACT = 3*86400000;  // 3 วัน สำหรับ exact name match
   var CI_WINDOW_FUZZY = 5*86400000;  // 5 วัน สำหรับ fuzzy match
-  var CI_WINDOW_DATE  = 1*86400000;  // 1 วัน สำหรับ date-only fallback (ชื่อเปลี่ยนสิ้นเชิง)
 
   var gk=normG(guestRaw);
   // 1. Exact normalized name match
@@ -909,52 +891,33 @@ function findRoom(guestRaw,ci,byGuest) {
 
   // 2. Fuzzy: แต่ละ word part score (ลด threshold เป็น 1 ถ้าชื่อ part ยาวพอ)
   var parts=gk.split(' ').filter(function(p){return p.length>2;});
-  if (parts.length) {
-    var best=null, bestScore=0;
-    Object.keys(byGuest).forEach(function(k) {
-      var score=0;
-      parts.forEach(function(p){ if (k.indexOf(p)>=0) score+=p.length; }); // weight by length
-      if (score>bestScore) { bestScore=score; best=k; }
-    });
-    // threshold: ถ้า part ยาว ≥5 ตัวอักษร score 1 ก็พอ; ไม่งั้นต้อง ≥2 parts
-    var longPart=parts.some(function(p){return p.length>=5;});
-    var minScore=longPart?5:8; // score เป็น sum of lengths
-    if (bestScore>=minScore&&best) {
-      var cands=byGuest[best];
-      if (ci) {
-        var dc=cands.filter(function(c){
-          return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_FUZZY;
-        });
-        if (dc.length) return dc[0].room;
-      }
-      return cands[0].room;
-    }
-  }
-
-  // 3. Date-only fallback — ชื่อแขกเปลี่ยนสิ้นเชิง (เช่น Airbnb เปลี่ยนชื่อที่แสดง/privacy mask)
-  // ใช้ได้เฉพาะกรณี check-in ตรงกัน "เพียงห้องเดียว" ทั้งระบบ เพื่อกันจับคู่ผิด
-  if (ci) {
-    var dateMatches=[];
-    Object.keys(byGuest).forEach(function(k){
-      byGuest[k].forEach(function(c){
-        if (c.ci && Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_DATE) {
-          dateMatches.push(c.room);
-        }
+  if (!parts.length) return null;
+  var best=null, bestScore=0;
+  Object.keys(byGuest).forEach(function(k) {
+    var score=0;
+    parts.forEach(function(p){ if (k.indexOf(p)>=0) score+=p.length; }); // weight by length
+    if (score>bestScore) { bestScore=score; best=k; }
+  });
+  // threshold: ถ้า part ยาว ≥5 ตัวอักษร score 1 ก็พอ; ไม่งั้นต้อง ≥2 parts
+  var longPart=parts.some(function(p){return p.length>=5;});
+  var minScore=longPart?5:8; // score เป็น sum of lengths
+  if (bestScore>=minScore&&best) {
+    var cands=byGuest[best];
+    if (ci) {
+      var dc=cands.filter(function(c){
+        return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_FUZZY;
       });
-    });
-    var uniqueRooms=dateMatches.filter(function(r,idx){return dateMatches.indexOf(r)===idx;});
-    if (uniqueRooms.length===1) return uniqueRooms[0];
+      if (dc.length) return dc[0].room;
+    }
+    return cands[0].room;
   }
   return null;
 }
 
 function normG(s) {
-  var words = s.toString().toLowerCase()
+  return s.toString().toLowerCase()
     .replace(/[,\/\\]+/g,' ')
-    .replace(/\s+/g,' ').trim()
-    .split(' ');
-  words.sort();
-  return words.join(' ');
+    .replace(/\s+/g,' ').trim();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1340,7 +1303,7 @@ function tryParseTripMsg(m,existing,seen,newRows){
   try {
     parseTripHtmlMsg(m).forEach(function(r){
       if (!existing.has(r.bookingId)&&!seen[r.bookingId]){
-        newRows.push(r); existing.set(r.bookingId, Number(r.net)||0); seen[r.bookingId]=true;
+        newRows.push(r); existing.add(r.bookingId); seen[r.bookingId]=true;
       }
     });
   } catch(e){ Logger.log('ERR Trip body: '+e.message); }
@@ -1357,7 +1320,7 @@ function tryParseTripAttachments(m,existing,seen,newRows){
         parseTripText(stripHTML(content.replace(/=\r?\n/g,'').replace(/=3D/g,'=')),dt,m.getSubject())
           .forEach(function(r){
             if (!existing.has(r.bookingId)&&!seen[r.bookingId]){
-              newRows.push(r); existing.set(r.bookingId, Number(r.net)||0); seen[r.bookingId]=true;
+              newRows.push(r); existing.add(r.bookingId); seen[r.bookingId]=true;
             }
           });
       } catch(e2){ Logger.log('ERR Trip att['+ai+']: '+e2.message); }
@@ -1554,7 +1517,7 @@ function matchBookingComSCB() {
   // index Booking.com rows by bid
   var bkIndex = {};
   data.forEach(function(row, i) {
-    var _bkOta=(row[C.ota-1]||'').toString().trim(); if (_bkOta!=='Booking.com'&&_bkOta!=='Booking') return;
+    if ((row[C.ota-1]||'').toString().trim() !== 'Booking.com') return;
     var bid = (row[C.bid-1]||'').toString().trim();
     bkIndex[bid] = {
       guest:  (row[C.guest-1]||'').toString().trim(),
@@ -1829,34 +1792,8 @@ function clearDataRows(sheet){
 }
 function getExistingIds(sheet){
   var last=sheet.getLastRow();
-  if (last<2) return new Map();
-  var vals=sheet.getRange(2,3,last-1,2).getValues(); // col C=bookingId, col D=confCode (unused here)
-  // col L (net) = column 12, offset from col C = col 3 → need cols C and L
-  // re-fetch with correct columns: C=3, L=12 → getRange(2,3,last-1,10) gives C..L
-  var bidCol=sheet.getRange(2,3,last-1,1).getValues().flat();
-  var netCol=sheet.getRange(2,12,last-1,1).getValues().flat();
-  var map=new Map();
-  for(var i=0;i<bidCol.length;i++){
-    var b=bidCol[i]; if(!b) continue;
-    b=String(b);
-    if(!map.has(b)) map.set(b, Number(netCol[i])||0);
-  }
-  return map;
-}
-// helper: ถ้า Airbnb bookingId ชน + net ต่างกัน → auto-suffix เพื่อไม่ต้อง whitelist
-function resolveAirbnbBid(bid, net, existing){
-  if(!existing.has(bid)) return bid;            // ไม่ชน → ใช้ bid เดิม
-  var existingNet=existing.get(bid);
-  if(Math.abs(existingNet - net)<0.02) return null; // ชน + net เหมือน → dup จริง → skip
-  // ชน + net ต่าง → extension/split payout → สร้าง suffix ใหม่
-  var suffix='-EXT-'+(net*100).toFixed(0);
-  var newBid=bid+suffix;
-  // กัน loop ถ้ามีซ้ำกันอีก
-  var attempt=0;
-  while(existing.has(newBid)&&attempt<10){
-    attempt++; newBid=bid+suffix+'-'+attempt;
-  }
-  return newBid;
+  if (last<2) return new Set();
+  return new Set(sheet.getRange(2,3,last-1,1).getValues().flat().filter(Boolean));
 }
 function appendRow(sheet,row){
   var r=sheet.getLastRow()+1;
@@ -2743,7 +2680,7 @@ function exportToGitHub() {
 // ═══════════════════════════════════════════════════════════════
 function restoreFromGitHub() {
   var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN')
-              || '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';
+              || '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';
   var repo  = 'theloftlivingspace-droid/payout-income-log';
   var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
 
@@ -2996,6 +2933,5 @@ function parseDate_(v) {
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
-
 
 
