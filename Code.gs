@@ -684,25 +684,14 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   var allConfs=[],allRooms=[],allGuests=[];
   var earliest=null,latest=null,totalNights=0;
 
-  // ✅ Dedupe: same conf code appearing multiple times (split Airbnb payout, e.g. resolution + main)
-  // → merge into single sub-row with summed NET instead of duplicating
+  // แยก entries ทุกรายการโดยไม่ merge — แม้ conf เดียวกัน (split payout เช่น Nihel 81.17 + 2638.54)
+  // เพื่อให้ TodoApp สร้าง invoice การ์ดแยกต่อยอด
   var mergedEntries=[];
   for (var j=0;j<guests.length;j++) {
     var ref   =(refIds[j]||'').toString().trim();
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
-    // Check if same conf already added
-    var existing=null;
-    for (var m=0;m<mergedEntries.length;m++) {
-      if (mergedEntries[m].ref===ref) { existing=mergedEntries[m]; break; }
-    }
-    if (existing) {
-      existing.net+=net;
-      existing.netStr=fmtAmt(existing.net);
-      existing.netParts.push(nets[j]);
-    } else {
-      mergedEntries.push({ref:ref,guest:guest,net:net,netStr:nets[j],netParts:[nets[j]]});
-    }
+    mergedEntries.push({ref:ref,guest:guest,net:net,netStr:nets[j],netParts:[nets[j]]});
   }
 
   for (var j=0;j<mergedEntries.length;j++) {
@@ -720,10 +709,8 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     if (co) { var coD=new Date(co); if (!latest  ||coD>latest  ) latest  =coD; }
     allConfs.push(ref); allRooms.push(room); allGuests.push(guest);
 
-    // Show breakdown if split (e.g. ↳ Nihel NET ฿81.17 + ฿2638.54 = ฿2719.71)
-    var netLabel=mergedEntries[j].netParts.length>1
-      ?mergedEntries[j].netParts.join(' + ')+' = ฿'+netStr
-      :'฿'+netStr;
+    // แสดง NET รวมของ entry นี้ (อาจเป็นผลรวมของ split payout conf เดียวกัน)
+    var netLabel='฿'+netStr;
     var subRow=makeRow(scbOTA,scbDate,scbBid,ref,
       guest,room,ci,co,nts,'','',net,'',
       '↳ '+guest+' ('+ref+') NET '+netLabel);
