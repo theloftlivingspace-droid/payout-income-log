@@ -885,9 +885,12 @@ function findRoom(guestRaw,ci,byGuest) {
 }
 
 function normG(s) {
-  return s.toString().toLowerCase()
+  var words = s.toString().toLowerCase()
     .replace(/[,\/\\]+/g,' ')
-    .replace(/\s+/g,' ').trim();
+    .replace(/\s+/g,' ').trim()
+    .split(' ');
+  words.sort();
+  return words.join(' ');
 }
 
 // ═══════════════════════════════════════════════════════════════
