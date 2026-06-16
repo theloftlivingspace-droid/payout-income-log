@@ -876,6 +876,7 @@ function matchRoomFromSheet1() {
 function findRoom(guestRaw,ci,byGuest) {
   var CI_WINDOW_EXACT = 3*86400000;  // 3 วัน สำหรับ exact name match
   var CI_WINDOW_FUZZY = 5*86400000;  // 5 วัน สำหรับ fuzzy match
+  var CI_WINDOW_DATE  = 1*86400000;  // 1 วัน สำหรับ date-only fallback (ชื่อเปลี่ยนสิ้นเชิง)
 
   var gk=normG(guestRaw);
   // 1. Exact normalized name match
@@ -892,25 +893,41 @@ function findRoom(guestRaw,ci,byGuest) {
 
   // 2. Fuzzy: แต่ละ word part score (ลด threshold เป็น 1 ถ้าชื่อ part ยาวพอ)
   var parts=gk.split(' ').filter(function(p){return p.length>2;});
-  if (!parts.length) return null;
-  var best=null, bestScore=0;
-  Object.keys(byGuest).forEach(function(k) {
-    var score=0;
-    parts.forEach(function(p){ if (k.indexOf(p)>=0) score+=p.length; }); // weight by length
-    if (score>bestScore) { bestScore=score; best=k; }
-  });
-  // threshold: ถ้า part ยาว ≥5 ตัวอักษร score 1 ก็พอ; ไม่งั้นต้อง ≥2 parts
-  var longPart=parts.some(function(p){return p.length>=5;});
-  var minScore=longPart?5:8; // score เป็น sum of lengths
-  if (bestScore>=minScore&&best) {
-    var cands=byGuest[best];
-    if (ci) {
-      var dc=cands.filter(function(c){
-        return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_FUZZY;
-      });
-      if (dc.length) return dc[0].room;
+  if (parts.length) {
+    var best=null, bestScore=0;
+    Object.keys(byGuest).forEach(function(k) {
+      var score=0;
+      parts.forEach(function(p){ if (k.indexOf(p)>=0) score+=p.length; }); // weight by length
+      if (score>bestScore) { bestScore=score; best=k; }
+    });
+    // threshold: ถ้า part ยาว ≥5 ตัวอักษร score 1 ก็พอ; ไม่งั้นต้อง ≥2 parts
+    var longPart=parts.some(function(p){return p.length>=5;});
+    var minScore=longPart?5:8; // score เป็น sum of lengths
+    if (bestScore>=minScore&&best) {
+      var cands=byGuest[best];
+      if (ci) {
+        var dc=cands.filter(function(c){
+          return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_FUZZY;
+        });
+        if (dc.length) return dc[0].room;
+      }
+      return cands[0].room;
     }
-    return cands[0].room;
+  }
+
+  // 3. Date-only fallback — ชื่อแขกเปลี่ยนสิ้นเชิง (เช่น Airbnb เปลี่ยนชื่อที่แสดง/privacy mask)
+  // ใช้ได้เฉพาะกรณี check-in ตรงกัน "เพียงห้องเดียว" ทั้งระบบ เพื่อกันจับคู่ผิด
+  if (ci) {
+    var dateMatches=[];
+    Object.keys(byGuest).forEach(function(k){
+      byGuest[k].forEach(function(c){
+        if (c.ci && Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_DATE) {
+          dateMatches.push(c.room);
+        }
+      });
+    });
+    var uniqueRooms=dateMatches.filter(function(r,idx){return dateMatches.indexOf(r)===idx;});
+    if (uniqueRooms.length===1) return uniqueRooms[0];
   }
   return null;
 }
