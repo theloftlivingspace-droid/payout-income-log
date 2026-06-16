@@ -211,8 +211,22 @@ function fullRebuild() {
     { q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
   ];
   sources.forEach(function(s) {
-    GmailApp.search(s.q, 0, s.lim).forEach(function(t) {
-      t.getMessages().forEach(function(m) {
+    var threads;
+    try {
+      threads = GmailApp.search(s.q, 0, s.lim);
+    } catch(e) {
+      Logger.log('ERR fullRebuild search ['+s.q+']: '+e.message);
+      return;
+    }
+    threads.forEach(function(t) {
+      var msgs;
+      try {
+        msgs = t.getMessages();
+      } catch(e) {
+        Logger.log('ERR fullRebuild getMessages: '+e.message);
+        return;
+      }
+      msgs.forEach(function(m) {
         try {
           s.fn(m).forEach(function(r) {
             if ((r.ota||'').startsWith('SCB') && (r.date||'') < '2026-03-01') return;
@@ -221,7 +235,10 @@ function fullRebuild() {
               newRows.push(r);
             }
           });
-        } catch(e) { Logger.log('ERR fullRebuild: '+e.message+' | '+m.getSubject()); }
+        } catch(e) {
+          var subj='?'; try{ subj=m.getSubject(); }catch(e2){}
+          Logger.log('ERR fullRebuild parse: '+e.message+' | '+subj);
+        }
       });
     });
   });
@@ -232,8 +249,22 @@ function fullRebuild() {
     'subject:"Booking no" after:'+SEARCH_FROM,
     'from:noreply_htl@trip.com after:'+SEARCH_FROM
   ].forEach(function(q) {
-    GmailApp.search(q, 0, 50).forEach(function(t) {
-      t.getMessages().forEach(function(m) {
+    var threads;
+    try {
+      threads = GmailApp.search(q, 0, 50);
+    } catch(e) {
+      Logger.log('ERR Trip search ['+q+']: '+e.message);
+      return;
+    }
+    threads.forEach(function(t) {
+      var msgs;
+      try {
+        msgs = t.getMessages();
+      } catch(e) {
+        Logger.log('ERR Trip getMessages: '+e.message);
+        return;
+      }
+      msgs.forEach(function(m) {
         try {
           parseTripEmail(m).forEach(function(r) {
             if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
