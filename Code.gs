@@ -684,21 +684,10 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   var allConfs=[],allRooms=[],allGuests=[];
   var earliest=null,latest=null,totalNights=0;
 
-  // แยก entries ทุกรายการโดยไม่ merge — แม้ conf เดียวกัน (split payout เช่น Nihel 81.17 + 2638.54)
-  // เพื่อให้ TodoApp สร้าง invoice การ์ดแยกต่อยอด
-  var mergedEntries=[];
   for (var j=0;j<guests.length;j++) {
     var ref   =(refIds[j]||'').toString().trim();
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
-    mergedEntries.push({ref:ref,guest:guest,net:net,netStr:nets[j],netParts:[nets[j]]});
-  }
-
-  for (var j=0;j<mergedEntries.length;j++) {
-    var ref   =mergedEntries[j].ref;
-    var guest =mergedEntries[j].guest;
-    var net   =mergedEntries[j].net;
-    var netStr=mergedEntries[j].netStr;
     var detail=detailByConf[ref]||detailByBid[ref]||{};
     var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
     var ci    =dateStr(detail.ci);
@@ -709,11 +698,9 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     if (co) { var coD=new Date(co); if (!latest  ||coD>latest  ) latest  =coD; }
     allConfs.push(ref); allRooms.push(room); allGuests.push(guest);
 
-    // แสดง NET รวมของ entry นี้ (อาจเป็นผลรวมของ split payout conf เดียวกัน)
-    var netLabel='฿'+netStr;
     var subRow=makeRow(scbOTA,scbDate,scbBid,ref,
       guest,room,ci,co,nts,'','',net,'',
-      '↳ '+guest+' ('+ref+') NET '+netLabel);
+      '↳ '+guest+' ('+ref+') NET ฿'+net);
     subRow._isTotal=false; subRow._isSingle=false;
     rows.push(subRow);
   }
@@ -723,17 +710,12 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   var ciStr=earliest?Utilities.formatDate(earliest,'Asia/Bangkok','yyyy-MM-dd'):'';
   var coStr=latest  ?Utilities.formatDate(latest,  'Asia/Bangkok','yyyy-MM-dd'):'';
   var nStr =totalNights>0?totalNights:'';
-  // ✅ Use mergedEntries for totalNote to avoid duplicate conf/guest display
-  var totalNote='✅ '+payType+' | '+mergedEntries.map(function(e){
-    var label=e.netParts.length>1?e.netParts.join('+')+'='+e.netStr:e.netStr;
-    return e.guest+'('+e.ref+') NET ฿'+label;
+  var totalNote='✅ '+payType+' | '+allGuests.map(function(g,k){
+    return g+'('+allConfs[k]+') NET ฿'+nets[k];
   }).join(' | ')+' | Value Date: '+scbDate;
 
-  // ✅ Dedupe allConfs/allGuests for total row display
-  var uniqueConfs=[],uniqueGuests=[];
-  allConfs.forEach(function(c,k){ if(c&&uniqueConfs.indexOf(c)<0){ uniqueConfs.push(c); uniqueGuests.push(allGuests[k]); } });
-  var totalRow=makeRow(scbOTA,scbDate,scbBid,uniqueConfs.filter(Boolean).join(', '),
-    uniqueGuests.join(', '), uniqueRooms.length>0?uniqueRooms.join(', '):'',
+  var totalRow=makeRow(scbOTA,scbDate,scbBid,allConfs.filter(Boolean).join(', '),
+    allGuests.join(', '), uniqueRooms.length>0?uniqueRooms.join(', '):'',
     '','','',
     scbAmt,'',scbAmt,'✅ Matched - '+payType,totalNote);
   totalRow._isTotal=true; totalRow._isSingle=false;
