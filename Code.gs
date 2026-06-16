@@ -2653,7 +2653,7 @@ function exportToGitHub() {
 // ═══════════════════════════════════════════════════════════════
 function restoreFromGitHub() {
   var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN')
-              || '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';
+              || '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';
   var repo  = 'theloftlivingspace-droid/payout-income-log';
   var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
 
