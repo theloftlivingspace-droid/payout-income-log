@@ -156,6 +156,7 @@ var BOOKING_COM_SCB_MAP = [
   // { scbId: 'SCB-2026-04-02-980.93', bids: ['6148157193'] },            // ALLARD Angélique
   // { scbId: 'SCB-2026-05-26-1423.79', bids: ['6339174127'] },           // Natthaphon
   // { scbId: 'SCB-YYYY-MM-DD-AMOUNT', bids: ['BID1','BID2'], nets: ['NET1','NET2'] },  // multi
+  { scbId: 'SCB-2026-06-16-2756.73', bids: ['6506062257'], nets: ['2756.73'] },  // Shahid Hussain / room 300
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -1486,7 +1487,7 @@ function matchBookingComSCB() {
   // index Booking.com rows by bid
   var bkIndex = {};
   data.forEach(function(row, i) {
-    if ((row[C.ota-1]||'').toString().trim() !== 'Booking.com') return;
+    var _bkOta=(row[C.ota-1]||'').toString().trim(); if (_bkOta!=='Booking.com'&&_bkOta!=='Booking') return;
     var bid = (row[C.bid-1]||'').toString().trim();
     bkIndex[bid] = {
       guest:  (row[C.guest-1]||'').toString().trim(),
