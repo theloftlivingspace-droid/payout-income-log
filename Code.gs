@@ -114,7 +114,11 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
   { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
-  { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
+  { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch total
+  // SCB-2026-05-05-5555.03 sub-rows (Trip.com booking IDs)
+  { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063903', room:'300' },  // BOONTUM/PAKPONG
+  { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063939', room:'204' },  // YAMKAMOL/METAWEE
+  { bid:'SCB-2026-05-05-5555.03', conf:'1400825520948811', room:'108' },  // NAM/SANG WON
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
@@ -2012,8 +2016,17 @@ function applyManualRoomFixes() {
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
-      if (!matched && fix.conf  && conf  && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0))  matched = true;
-      if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
+      // bid+conf: ใช้ fix ที่ระบุทั้ง bid และ conf → match เฉพาะ row นั้น (sub-row specific)
+      if (!matched && fix.bid && fix.conf && bid === fix.bid) {
+        if (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0) matched = true;
+      }
+      // conf-only หรือ bid-only หรือ guest-only
+      if (!matched && !fix.conf && fix.bid && bid && bid === fix.bid) {
+        // bid-only fix → ใช้กับ total row เท่านั้น (sub-rows มี conf เดี่ยว ไม่ใช่ comma list)
+        var isSubRow = otaVal.startsWith('SCB') && conf && conf.indexOf(',') < 0 && bid === fix.bid && !notesVal.startsWith('\u2705 Matched');
+        if (!isSubRow) matched = true;
+      }
+      if (!matched && fix.conf && !fix.bid && conf && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0)) matched = true;
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
 
