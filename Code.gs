@@ -1429,7 +1429,7 @@ function manualMatchSCBtoTrip(){
     });
 
     var scbAmt =fmtAmt(data[scbRowIdx][C.net-1]);
-    var scbDate=(data[scbRowIdx][C.date-1]||'').toString().substring(0,10);
+    var scbDate=normalizeDate(data[scbRowIdx][C.date-1]||'');
     var scbOTA =(data[scbRowIdx][C.ota-1]||'').toString();
     var scbBid =(data[scbRowIdx][C.bid-1]||'').toString();
 
@@ -2365,9 +2365,7 @@ function matchSCBtoOTA(sheet) {
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
     var raw=row[C.date-1];
-    var dt=raw instanceof Date
-      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
-      :raw.toString().substring(0,10);
+    var dt=normalizeDate(raw);
     var mon=dt.substring(0,7);
     var entry={
       guest:(row[C.guest-1]||'').toString(),
