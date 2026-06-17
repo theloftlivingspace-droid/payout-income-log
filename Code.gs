@@ -2219,14 +2219,22 @@ function syncSCBTotalRooms() {
 
       // collect rooms from sub-rows ONLY
       var rooms = [];
+      var totalNet = parseFloat((data[i][C.net-1]||'0').toString().replace(/,/g,''))||0;
       var totalRoom = (data[i][pRoom] || '').toString().trim();
       var j = i + 1;
       while (j < data.length) {
         var subNotes = (data[j][pNotes] || '').toString().trim();
         var subOTA   = (data[j][pOTA]   || '').toString().trim();
-        if (!subOTA.startsWith('SCB') || !subNotes.startsWith('\u21b3')) break;
+        var subNet   = parseFloat((data[j][C.net-1]||'0').toString().replace(/,/g,''))||0;
+        // sub-row: same SCB OTA, same bid, net < total, starts with ↳ OR ✅ (old format)
+        if (!subOTA.startsWith('SCB')) break;
+        var subBid = (data[j][pBid]||'').toString().trim();
+        if (subBid !== bid) break;
+        var isSubRow = subNotes.startsWith('\u21b3') || 
+                       (subNotes.startsWith('\u2705') && subNet < totalNet - 0.01);
+        if (!isSubRow) break;
         var subRoom = (data[j][pRoom] || '').toString().trim();
-        if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        if (subRoom && subRoom !== '?' && !subRoom.includes(',') && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
         j++;
       }
       var hadSubRows = (j > i + 1);
