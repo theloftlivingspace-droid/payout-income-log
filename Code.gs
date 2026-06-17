@@ -1830,6 +1830,11 @@ function setupSheet(){
   sheet.showColumns(1, HEADERS.length);  // unhide all columns
   [110,110,180,140,200,80,105,105,55,110,115,110,200,300]
     .forEach(function(w,i){sheet.setColumnWidth(i+1,w);});
+  // Force date columns to ISO format for all existing + future rows
+  var maxRow = Math.max(sheet.getLastRow(), 2);
+  [C.date, C.ci, C.co].forEach(function(col){
+    sheet.getRange(2, col, maxRow, 1).setNumberFormat('yyyy-mm-dd');
+  });
   return sheet;
 }
 function clearDataRows(sheet){
@@ -1875,6 +1880,9 @@ function appendRow(sheet,row){
     row.guest,roomVal,row.checkIn,row.checkOut,row.nights,
     row.total,row.commission,row.net,row.status,row.notes
   ]]);
+  sheet.getRange(r,C.date).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(r,C.ci).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(r,C.co).setNumberFormat('yyyy-mm-dd');
   sheet.getRange(r,C.bid).setNumberFormat('@');
   sheet.getRange(r,C.conf).setNumberFormat('@');
   var bg;
