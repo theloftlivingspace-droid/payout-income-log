@@ -736,11 +736,20 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var ref   =(refIds[j]||'').toString().trim();
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
-    var detail=detailByConf[ref]||detailByBid[ref]||{};
+    var detail=detailByConf[ref]||detailByBid[ref]||detailByBid['guest:'+normG(guest)]||{};
     var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
     var ci    =dateStr(detail.ci);
     var co    =dateStr(detail.co);
     var nts   =detail.nights||'';
+    // fallback: Sheet1 ci/co/room ถ้า detail ไม่ครบ
+    if (!ci||!co||room==='?') {
+      var s1e=s1Map[normG(guest)];
+      if (s1e) {
+        if (!ci) ci=s1e.ci;
+        if (!co) co=s1e.co;
+        if (!nts) nts=s1e.nights||nightsBetween(ci,co);
+      }
+    }
     if (nts) { try { totalNights+=parseInt(nts); } catch(e){} }
     if (ci) { var ciD=new Date(ci); if (!earliest||ciD<earliest) earliest=ciD; }
     if (co) { var coD=new Date(co); if (!latest  ||coD>latest  ) latest  =coD; }
@@ -2252,7 +2261,7 @@ function matchSCBtoOTA(sheet) {
       ci:    row[C.ci-1], co:row[C.co-1],
       nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
     };
-    if (conf&&/^[A-Z0-9]{6,14}$/.test(conf)) detailByConf[conf]=entry;
+    if (conf&&(/^[A-Z0-9]{6,14}$/.test(conf)||/^\d{10,20}$/.test(conf))) detailByConf[conf]=entry;
     if (bid) detailByBid[bid]=entry;
     var gk2=normG(guestRaw);
     if (gk2) detailByBid['guest:'+gk2]=entry;
