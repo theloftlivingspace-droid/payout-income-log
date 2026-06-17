@@ -2242,6 +2242,14 @@ function syncSCBTotalRooms() {
 // ═══════════════════════════════════════════════════════════════
 // OVERRIDE: matchSCBtoOTA — match Airbnb by net sum (not gross total)
 // ═══════════════════════════════════════════════════════════════
+function normalizeDate(v) {
+  if (v instanceof Date) return Utilities.formatDate(v,'Asia/Bangkok','yyyy-MM-dd');
+  var s = v.toString().trim();
+  var sl = s.split('/');
+  if (sl.length===3 && sl[2].length===4)
+    return sl[2]+'-'+sl[0].padStart(2,'0')+'-'+sl[1].padStart(2,'0');
+  return s.substring(0,10);
+}
 function matchSCBtoOTA(sheet) {
   var last=sheet.getLastRow();
   if (last<2) return;
@@ -2282,9 +2290,7 @@ function matchSCBtoOTA(sheet) {
     if (conf && _airbnbSeenConf[conf]) return;  // skip duplicate conf
     if (conf) _airbnbSeenConf[conf]=true;
     var raw=row[C.date-1];
-    var dt=raw instanceof Date
-      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
-      :raw.toString().substring(0,10);
+    var dt=normalizeDate(raw);
     if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
     airbnbByDate[dt].push({
       conf:conf,
@@ -2430,9 +2436,7 @@ function matchSCBtoOTA(sheet) {
 
     var scbAmt =fmtAmt(row[C.net-1]);
     var rawD   =row[C.date-1];
-    var scbDate=rawD instanceof Date
-      ?Utilities.formatDate(rawD,'Asia/Bangkok','yyyy-MM-dd')
-      :rawD.toString().substring(0,10);
+    var scbDate=normalizeDate(rawD);
     var scbOTA =(row[C.ota-1]||'').toString();
     var scbBid =(row[C.bid-1]||'').toString().trim();
     var acctM  =(row[C.notes-1]||'').toString().match(/x[\dX]+/);
