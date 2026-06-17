@@ -2026,7 +2026,12 @@ function applyManualRoomFixes() {
         var isSubRow = otaVal.startsWith('SCB') && conf && conf.indexOf(',') < 0 && bid === fix.bid && !notesVal.startsWith('\u2705 Matched');
         if (!isSubRow) matched = true;
       }
-      if (!matched && fix.conf && !fix.bid && conf && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0)) matched = true;
+      if (!matched && fix.conf && !fix.bid && conf) {
+        var confList = conf.split(',').map(function(s){return s.trim();});
+        // conf-only fix: ห้ามแตะ total row (conf ที่มีหลาย values = total row)
+        var isTotalRow = confList.length > 1;
+        if (!isTotalRow && (conf === fix.conf || confList.indexOf(fix.conf) >= 0)) matched = true;
+      }
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
 
