@@ -2055,7 +2055,7 @@ function styleSheet1(){
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
   sh.clearFormats();
   var lastRow=sh.getLastRow(), lastCol=7;
-  if (lastRow<1) return;
+  if (lastRow<2) return;
 
   sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
   sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200);
@@ -2065,21 +2065,11 @@ function styleSheet1(){
         .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
   sh.setRowHeight(1,36); sh.setFrozenRows(1);
 
-  // base alternating rows
-  for (var r=2;r<=lastRow;r++){
-    sh.getRange(r,1,1,lastCol)
-      .setBackground(r%2===0?'#f8f9fa':'#ffffff')
-      .setFontColor('#333333').setFontSize(10).setVerticalAlignment('middle');
-    sh.setRowHeight(r,26);
-  }
-
-  // room number → type map
   var ROOM_TYPE_MAP = {
     '103':'elegance','108':'retro','113':'legacy',
     '203':'allure','204':'elegance','205':'allure',
     '209':'radiance','210':'radiance','214':'legacy','300':'luxury'
   };
-
   var ROOM_COLORS={
     'luxury'   :{bg:'#fff3cd',font:'#856404'},
     'retro'    :{bg:'#d1ecf1',font:'#0c5460'},
@@ -2092,7 +2082,6 @@ function styleSheet1(){
     'no show'  :{bg:'#ffeeba',font:'#856404'},
     'รอยืนยัน' :{bg:'#e2e3e5',font:'#383d41'}
   };
-
   var CHANNEL_COLORS={
     'Airbnb'  :{bg:'#ff5a5f',font:'#ffffff'},
     'booking' :{bg:'#003580',font:'#ffffff'},
@@ -2101,30 +2090,50 @@ function styleSheet1(){
     'Direct'  :{bg:'#28a745',font:'#ffffff'}
   };
 
-  var dataVals=sh.getRange(2,1,lastRow-1,1).getValues();
-  dataVals.forEach(function(row,i){
-    var r=i+2;
-    var cv=(row[0]||'').toString().trim();
-    var cvL=cv.toLowerCase();
-    var fullRow=sh.getRange(r,1,1,lastCol);
-    var cellA=sh.getRange(r,1);
+  var numRows = lastRow - 1;
+  var colAVals = sh.getRange(2,1,numRows,1).getValues();
+  var colEVals = sh.getRange(2,5,numRows,1).getValues();
 
-    // สถานะพิเศษก่อน
-    if (cvL.indexOf('cancel')>=0||cvL.indexOf('ยกเลิก')>=0){
-      fullRow.setBackground(ROOM_COLORS['cancel'].bg).setFontColor(ROOM_COLORS['cancel'].font);
-      return;
-    }
-    if (cvL.indexOf('no show')>=0){
-      fullRow.setBackground(ROOM_COLORS['no show'].bg).setFontColor(ROOM_COLORS['no show'].font);
-      cellA.setFontWeight('bold');
-      return;
-    }
-    if (cv==='รอยืนยัน'){
-      fullRow.setBackground(ROOM_COLORS['รอยืนยัน'].bg).setFontColor(ROOM_COLORS['รอยืนยัน'].font);
-      cellA.setFontStyle('italic');
-      return;
+  // Build batch arrays — one entry per row, per column
+  var bgFull   = [], fontFull  = [], weightFull = [], styleFull  = [];
+  var bgColA   = [], fontColA  = [];
+  var bgColE   = [], fontColE  = [], weightColE = [];
+
+  for (var i=0; i<numRows; i++){
+    var cv  = (colAVals[i][0]||'').toString().trim();
+    var cvL = cv.toLowerCase();
+    var altBg = (i%2===0) ? '#f8f9fa' : '#ffffff';
+
+    // defaults for full row
+    var rowBg   = altBg;
+    var rowFont = '#333333';
+    var rowWeight = 'normal';
+    var rowStyle  = 'normal';
+    // col A override
+    var aBg = altBg, aFont = '#333333', aWeight = 'normal';
+    // col E
+    var eBg = null, eFont = null, eWeight = 'normal';
+
+    // Special status rows — full row color
+    if (cvL.indexOf('cancel')>=0 || cvL.indexOf('ยกเลิก')>=0){
+      rowBg=ROOM_COLORS['cancel'].bg; rowFont=ROOM_COLORS['cancel'].font;
+      aBg=rowBg; aFont=rowFont;
+    } else if (cvL.indexOf('no show')>=0){
+      rowBg=ROOM_COLORS['no show'].bg; rowFont=ROOM_COLORS['no show'].font;
+      aBg=rowBg; aFont=rowFont; aWeight='bold';
+    } else if (cv==='รอยืนยัน'){
+      rowBg=ROOM_COLORS['รอยืนยัน'].bg; rowFont=ROOM_COLORS['รอยืนยัน'].font;
+      aBg=rowBg; aFont=rowFont; rowStyle='italic';
+    } else {
+      // Room type color on col A only, rest stays alternating
+      var roomNum  = cv.split(/\s+/)[0];
+      var typeName = ROOM_TYPE_MAP[roomNum];
+      if (typeName && ROOM_COLORS[typeName]){
+        aBg=ROOM_COLORS[typeName].bg; aFont=ROOM_COLORS[typeName].font; aWeight='bold';
+      }
     }
 
+<<<<<<<< HEAD:Code.gs
     // ดึงเลขห้องจาก col A (เช่น "103 Elegance" หรือ "103")
     var roomNum = cv.split(/\s+/)[0];
     var typeName = ROOM_TYPE_MAP[roomNum];
@@ -2132,8 +2141,44 @@ function styleSheet1(){
       sh.getRange(r,1,1,2).setBackground(ROOM_COLORS[typeName].bg)
            .setFontColor(ROOM_COLORS[typeName].font)
            .setFontWeight('bold');
+========
+    // Channel color on col E
+    var ch = (colEVals[i][0]||'').toString().trim();
+    var chL = ch.toLowerCase();
+    Object.keys(CHANNEL_COLORS).forEach(function(key){
+      if (chL.indexOf(key.toLowerCase())>=0){
+        eBg=CHANNEL_COLORS[key].bg; eFont=CHANNEL_COLORS[key].font; eWeight='bold';
+      }
+    });
+
+    // Push full-row arrays (7 cols each)
+    var rowBgArr=[], rowFontArr=[], rowWeightArr=[], rowStyleArr=[];
+    for (var c=0; c<lastCol; c++){
+      rowBgArr.push(rowBg); rowFontArr.push(rowFont);
+      rowWeightArr.push(rowWeight); rowStyleArr.push(rowStyle);
+>>>>>>>> b5829c9 (fix styleSheet1: batch arrays instead of per-row API calls, prevents color bleed on new rows):Payout_Income_Log_v23.gs
     }
-  });
+    bgFull.push(rowBgArr); fontFull.push(rowFontArr);
+    weightFull.push(rowWeightArr); styleFull.push(rowStyleArr);
+
+    bgColA.push([aBg]); fontColA.push([aFont]);
+    bgColE.push([eBg||rowBg]); fontColE.push([eFont||rowFont]); weightColE.push([eWeight]);
+  }
+
+  // Apply all in batch
+  var dataRange = sh.getRange(2,1,numRows,lastCol);
+  dataRange.setBackgrounds(bgFull).setFontColors(fontFull)
+           .setFontWeights(weightFull).setFontStyles(styleFull)
+           .setFontSize(10).setVerticalAlignment('middle');
+
+  sh.getRange(2,1,numRows,1).setBackgrounds(bgColA).setFontColors(fontColA);
+
+  var colERange = sh.getRange(2,5,numRows,1);
+  colERange.setBackgrounds(bgColE).setFontColors(fontColE)
+           .setFontWeights(weightColE).setHorizontalAlignment('center');
+
+  // Row heights batch
+  for (var r=2; r<=lastRow; r++) sh.setRowHeight(r,26);
 
   // col E — Channel color
   var chanData=sh.getRange(2,5,lastRow-1,1).getValues();
