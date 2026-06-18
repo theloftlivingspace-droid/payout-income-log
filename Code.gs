@@ -2329,17 +2329,18 @@ function matchSCBtoOTA(sheet) {
   // Build Airbnb batches keyed by NET SUM (not gross total)
   // Group rows by payout date window (same day) → sum nets
   var airbnbByDate={};  // date → [{conf,guest,net,total}]
-  var _airbnbSeenConf={};  // dedup: confCode → true (เพื่อไม่นับ EXT rows ซ้ำ)
+  // dedup by bookingId — ไม่ใช่ confCode เพราะ conf เดียวกันมีหลาย payout ได้ (multi-payout)
+  var _airbnbSeenBid={};
   data.forEach(function(row) {
     var ota=(row[C.ota-1]||'').toString().trim();
     if (ota!=='Airbnb') return;
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     var bt =parseFloat((row[C.total-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
-    // dedup by confCode — ถ้า conf เดียวกันมีหลาย rows (EXT duplicates) ให้ใช้แค่ net สูงสุด
+    var bid =(row[C.bid-1]||'').toString().trim();
     var conf=(row[C.conf-1]||'').toString().trim();
-    if (conf && _airbnbSeenConf[conf]) return;  // skip duplicate conf
-    if (conf) _airbnbSeenConf[conf]=true;
+    if (bid && _airbnbSeenBid[bid]) return;
+    if (bid) _airbnbSeenBid[bid]=true;
     var raw=row[C.date-1];
     var dt=normalizeDate(raw);
     if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
