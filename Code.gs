@@ -2302,6 +2302,8 @@ function normalizeDate(v) {
   return s.substring(0,10);
 }
 function matchSCBtoOTA(sheet) {
+  if (!sheet) { var ss=SpreadsheetApp.openById(MASTER_SHEET_ID); sheet=ss.getSheetByName(TAB_NAME); }
+  if (!sheet) { Logger.log('matchSCBtoOTA: sheet not found'); return; }
   var last=sheet.getLastRow();
   if (last<2) return;
   var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
