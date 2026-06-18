@@ -114,6 +114,23 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
   { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
+  // SCB-2026-04-07-9464.05: 妘芮林(103) + Avto Dagdelen(203) → total=103, 203
+  { bid:'SCB-2026-04-07-9464.05', conf:'HMPJDDT2X2', room:'103' },   // 妘芮 林
+  { bid:'SCB-2026-04-07-9464.05', conf:'HMJSD4WSQ9', room:'203' },   // Avto Dagdelen
+  { bid:'SCB-2026-04-07-9464.05', room:'103, 203' },                  // total
+
+  // SCB-2026-04-21-9177.65: Hélèm(363) + Aiman(203) → total=203, 363
+  { bid:'SCB-2026-04-21-9177.65', conf:'HMP9HW25EN', room:'363' },   // Hélèm Saouchi
+  { bid:'SCB-2026-04-21-9177.65', conf:'HMDWQA9E9H', room:'203' },   // Aiman Hamizan
+  { bid:'SCB-2026-04-21-9177.65', room:'203, 363' },                  // total
+
+  // SCB-2026-04-27-499.80: Nick(204)+Hasan(113)+Hélèm(363)+Денис(203) → total=113,203,204,363
+  { bid:'SCB-2026-04-27-499.80', conf:'HMED99EQ8W', room:'204' },    // Nick Laschet
+  { bid:'SCB-2026-04-27-499.80', conf:'HMM2YXSJXC', room:'113' },   // Hasan Workman
+  { bid:'SCB-2026-04-27-499.80', conf:'HMP9HW25EN', room:'363' },    // Hélèm Saouchi
+  { bid:'SCB-2026-04-27-499.80', conf:'HMHY2NAW82', room:'203' },    // Денис Колескников
+  { bid:'SCB-2026-04-27-499.80', room:'113, 203, 204, 363' },         // total
+
   { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch total
   // SCB-2026-05-05-5555.03 sub-rows (Trip.com booking IDs)
   { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063903', room:'300' },  // BOONTUM/PAKPONG
