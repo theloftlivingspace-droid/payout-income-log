@@ -224,36 +224,37 @@ function quickReformat() {
 // ═══════════════════════════════════════════════════════════════
 // FULL REBUILD — incremental: fetch เฉพาะ rows ใหม่ที่ยังไม่มีใน sheet
 // ═══════════════════════════════════════════════════════════════
-// ลบ duplicate EXT rows ที่เกิดจาก fullRebuild ซ้ำ เช่น ABB-CONF-EXT-8117-1, -2, ...
+// ลบ duplicate EXT rows ที่เกิดจาก fullRebuild ซ้ำ
+// จัดการ 2 pattern:
+//   1. ABB-CONF-EXT-N-1, -2, ... (attempt suffix) → ลบทิ้งทั้งหมด เก็บแค่ ABB-CONF-EXT-N
+//   2. bid ซ้ำกันทั้งคู่ (bid + net เหมือน) → ลบตัวหลัง
 function cleanupDuplicateExtRows() {
   var sheet = setupSheet();
   var last  = sheet.getLastRow();
   if (last < 2) return;
   var data  = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
-  // เก็บ bid แรกที่เจอ (index row) และลบ row ที่ bid ซ้ำหรือเป็น -1/-2/... ของ bid ที่มีอยู่แล้ว
-  var seen  = {};   // base bid → {net, rowIdx}
+  var seen  = {};   // bid → net
   var toDelete = [];
   for (var i=0; i<data.length; i++) {
     var bid = (data[i][C.bid-1]||'').toString().trim();
     var net = parseFloat((data[i][C.net-1]||0).toString().replace(/,/g,''))||0;
     if (!bid) continue;
-    // ตรวจว่า bid เป็น pattern ABB-CONF-EXT-N-attempt ไหม
-    var m = bid.match(/^(.+?-EXT-\d+)-(\d+)$/);
-    if (m) {
-      var baseBid = m[1];
-      // ถ้า base bid มีอยู่ใน sheet แล้ว → row นี้คือ duplicate → ลบ
-      if (seen[baseBid] !== undefined && Math.abs(seen[baseBid] - net) < 0.02) {
-        toDelete.push(i+2); // +2 เพราะ row 1 = header, data[0] = row 2
+    // pattern: ABB-CONF-EXT-N-attempt → ถ้า base bid (ABB-CONF-EXT-N) อยู่ใน seen แล้ว → ลบ
+    var attemptMatch = bid.match(/^(.+-EXT-\d+)-\d+$/);
+    if (attemptMatch) {
+      var baseBid = attemptMatch[1];
+      if (seen[baseBid] !== undefined) {
+        toDelete.push(i+2);
         continue;
       }
     }
+    // bid ซ้ำทั่วไป (net เหมือน) → ลบตัวหลัง
     if (seen[bid] !== undefined && Math.abs(seen[bid] - net) < 0.02) {
       toDelete.push(i+2);
     } else {
       seen[bid] = net;
     }
   }
-  // ลบจากล่างขึ้นบนเพื่อไม่ให้ index เลื่อน
   toDelete.sort(function(a,b){return b-a;});
   toDelete.forEach(function(r){ sheet.deleteRow(r); });
   Logger.log('cleanupDuplicateExtRows: deleted '+toDelete.length+' dup rows');
