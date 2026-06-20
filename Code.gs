@@ -2291,10 +2291,16 @@ function syncSCBTotalRooms() {
         continue;
       }
 
-      // collect rooms from sub-rows ONLY
+      // collect rooms from sub-rows ONLY, keyed by guest name so we can
+      // re-align them to the total row's guest order below (sub-rows can
+      // get physically reordered by sortPayoutByOTA, independent of the
+      // guest order baked into the total row's "ชื่อแขก"/note columns —
+      // joining by scan order alone causes guest[i] ↔ room[i] mismatches).
       var rooms = [];
+      var roomByGuest = {};
       var totalNet = parseFloat((data[i][C.net-1]||'0').toString().replace(/,/g,''))||0;
       var totalRoom = (data[i][pRoom] || '').toString().trim();
+      var totalGuestField = (data[i][C.guest-1] || '').toString().trim();
       var j = i + 1;
       while (j < data.length) {
         var subNotes = (data[j][pNotes] || '').toString().trim();
@@ -2309,11 +2315,23 @@ function syncSCBTotalRooms() {
         if (!isSubRow) break;
         var subRoom = (data[j][pRoom] || '').toString().trim();
         if (subRoom && subRoom !== '?' && !subRoom.includes(',') && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        var subGuest = (data[j][C.guest-1] || '').toString().trim();
+        if (subGuest && subRoom && subRoom !== '?' && !(subGuest in roomByGuest)) roomByGuest[subGuest] = subRoom;
         j++;
       }
       var hadSubRows = (j > i + 1);
       if (hadSubRows && rooms.length > 1) {
-        var merged = rooms.join(', ');
+        // re-derive room order from the total row's existing guest order
+        // (falls back to scan order for any guest we couldn't match)
+        var guestOrder = totalGuestField ? totalGuestField.split(',').map(function(g){ return g.trim(); }) : [];
+        var orderedRooms = [];
+        guestOrder.forEach(function(g) {
+          var r = roomByGuest[g];
+          if (r && orderedRooms.indexOf(r) < 0) orderedRooms.push(r);
+        });
+        // append any rooms we couldn't align via guest name (safety net)
+        rooms.forEach(function(r) { if (orderedRooms.indexOf(r) < 0) orderedRooms.push(r); });
+        var merged = orderedRooms.length === rooms.length ? orderedRooms.join(', ') : rooms.join(', ');
         if (merged !== totalRoom) {
           sheet.getRange(i+2, pRoom+1).setValue(merged);
           data[i][pRoom] = merged;
