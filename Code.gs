@@ -2208,8 +2208,28 @@ function styleSheet1(){
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
 
-  // ── Sort by วันจอง (col H, index 7) ascending ก่อน format ──
+  // ── Fill col H (วันจอง) จาก ResId ถ้ายังว่าง ──
   var lastRow=sh.getLastRow(), lastCol=8;
+  if (lastRow>1){
+    var allData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
+    var resIdCol=5, bookingDateCol=7; // 0-indexed
+    var updated=false;
+    allData.forEach(function(row,i){
+      if (!row[bookingDateCol]){
+        var resId=(row[resIdCol]||'').toString().trim();
+        // ResId format: XXX-yyyyname-YYYYMMDD หรือ XXX-CONFCODE
+        var m=resId.match(/(\d{8})$/);
+        if(m){
+          var d=m[1];
+          row[bookingDateCol]=d.substring(0,4)+'-'+d.substring(4,6)+'-'+d.substring(6,8);
+          updated=true;
+        }
+      }
+    });
+    if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
+  }
+
+  // ── Sort by วันจอง (col H, index 7) ascending ──
   if (lastRow>2){
     var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
     var rows=dataRange.getValues();
