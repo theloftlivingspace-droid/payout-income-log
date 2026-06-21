@@ -2220,9 +2220,14 @@ function styleSheet1(){
         // ResId format: XXX-yyyyname-YYYYMMDD หรือ XXX-CONFCODE
         var m=resId.match(/(\d{8})$/);
         if(m){
+          // มี date suffix ปกติ: ABB-luisens-20260630
           var d=m[1];
           row[bookingDateCol]=d.substring(0,4)+'-'+d.substring(4,6)+'-'+d.substring(6,8);
           updated=true;
+        } else if(resId.match(/^ABB-[A-Z0-9]{8,12}(-\d{8})?$/)){
+          // Mycondo conf code ไม่มี date → ใช้ check-in (col C, index 2) แทน
+          var ci=(row[2]||'').toString().trim();
+          if(ci) { row[bookingDateCol]=ci; updated=true; }
         }
       }
     });
