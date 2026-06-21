@@ -1519,6 +1519,26 @@ function manualMatchSCBtoTrip(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// doPost — trigger actions from external services (e.g. hotel-line-bot)
+// ═══════════════════════════════════════════════════════════════
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var action = body.action || '';
+    if (action === 'styleSheet1') {
+      styleSheet1();
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, action: 'styleSheet1' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'unknown action: ' + action }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════
 function doGet(e){
   var p=e&&e.parameter?e.parameter:{};
@@ -2187,8 +2207,23 @@ function styleSheet1(){
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
-  sh.clearFormats();
+
+  // ── Sort by check-in date (col C) ascending ก่อน format ──
   var lastRow=sh.getLastRow(), lastCol=7;
+  if (lastRow>2){
+    var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
+    var rows=dataRange.getValues();
+    rows.sort(function(a,b){
+      var da=a[2]?new Date(a[2]):new Date('9999-12-31');
+      var db=b[2]?new Date(b[2]):new Date('9999-12-31');
+      return da-db;
+    });
+    dataRange.setValues(rows);
+    lastRow=sh.getLastRow();
+  }
+
+  sh.clearFormats();
+  lastRow=sh.getLastRow(); lastCol=7;
   if (lastRow<1) return;
 
   sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
