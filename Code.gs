@@ -2073,8 +2073,16 @@ function applyManualRoomFixes() {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
       // bid+conf: ใช้ fix ที่ระบุทั้ง bid และ conf → match เฉพาะ row นั้น (sub-row specific)
+      // ห้ามแตะ total row (conf ที่มีหลาย values คั่น comma) ด้วยกฎนี้ เว้นแต่ fix.conf
+      // จะเป็น string เดียวกับ conf เต็มของ total row พอดี (i.e. ตั้งใจ fix total row จริงๆ)
       if (!matched && fix.bid && fix.conf && bid === fix.bid) {
-        if (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0) matched = true;
+        var curConfList = conf.split(',').map(function(s){return s.trim();});
+        var curIsTotalRow = curConfList.length > 1;
+        if (curIsTotalRow) {
+          if (conf === fix.conf) matched = true;
+        } else if (conf === fix.conf || curConfList.indexOf(fix.conf) >= 0) {
+          matched = true;
+        }
       }
       // conf-only หรือ bid-only หรือ guest-only
       if (!matched && !fix.conf && fix.bid && bid && bid === fix.bid) {
