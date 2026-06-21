@@ -2208,14 +2208,14 @@ function styleSheet1(){
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
 
-  // ── Sort by check-in date (col C) ascending ก่อน format ──
-  var lastRow=sh.getLastRow(), lastCol=7;
+  // ── Sort by วันจอง (col H, index 7) ascending ก่อน format ──
+  var lastRow=sh.getLastRow(), lastCol=8;
   if (lastRow>2){
     var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
     var rows=dataRange.getValues();
     rows.sort(function(a,b){
-      var da=a[2]?new Date(a[2]):new Date('9999-12-31');
-      var db=b[2]?new Date(b[2]):new Date('9999-12-31');
+      var da=a[7]?new Date(a[7]):new Date('9999-12-31');
+      var db=b[7]?new Date(b[7]):new Date('9999-12-31');
       return da-db;
     });
     dataRange.setValues(rows);
@@ -2223,15 +2223,17 @@ function styleSheet1(){
   }
 
   sh.clearFormats();
-  lastRow=sh.getLastRow(); lastCol=7;
+  lastRow=sh.getLastRow(); lastCol=8;
   if (lastRow<1) return;
 
   sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
-  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200);
+  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200); sh.setColumnWidth(8,110);
 
   var header=sh.getRange(1,1,1,lastCol);
   header.setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
         .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  // col H — วันจอง: center + date color
+  sh.getRange(2,8,Math.max(lastRow-1,1),1).setHorizontalAlignment('center').setFontColor('#666666').setFontSize(9);
   sh.setRowHeight(1,36); sh.setFrozenRows(1);
 
   // base alternating rows
@@ -2323,7 +2325,7 @@ function styleSheet1(){
   });
 
   sh.getRange(2,3,lastRow-1,2).setHorizontalAlignment('center');
-  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note'];
+  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง'];
   sh.getRange(1,1,1,lastCol).setValues([SH]);
   sh.getRange(1,1,lastRow,lastCol).setBorder(true,true,true,true,false,false,'#cccccc',SpreadsheetApp.BorderStyle.SOLID);
   sh.getRange(2,1,lastRow-1,lastCol).setBorder(false,false,false,false,false,true,'#e0e0e0',SpreadsheetApp.BorderStyle.SOLID);
