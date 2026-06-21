@@ -2057,6 +2057,35 @@ function applyManualRoomFixes() {
   var pOTA   = pH.indexOf('OTA');
   var pGuest = pH.indexOf('ชื่อแขก');
 
+  // bid+conf room lookup built from the curated single-guest entries in
+  // MANUAL_ROOM_FIXES (these map one specific conf code to one verified
+  // room and are not order-dependent). Used below to auto-derive a total
+  // row's multi-room string from its หมายเหตุ field's guest(conf) order —
+  // which is written once at row-creation time and never reshuffled,
+  // unlike the room column itself — instead of trusting a separately
+  // hand-typed comma-joined room string that can silently fall out of
+  // sync with the guest order.
+  var confRoomMap = {};
+  MANUAL_ROOM_FIXES.forEach(function(fx) {
+    if (fx.bid && fx.conf && fx.conf.indexOf(',') < 0 && fx.room && fx.room.indexOf(',') < 0) {
+      confRoomMap[fx.bid + '|' + fx.conf] = fx.room;
+    }
+  });
+
+  function deriveTotalRoomFromNotes(bidVal, notesText) {
+    var confs = [];
+    var re = /\(([^)]+)\)/g, m;
+    while ((m = re.exec(notesText))) confs.push(m[1].trim());
+    if (confs.length < 2) return null;
+    var rooms = [];
+    for (var k = 0; k < confs.length; k++) {
+      var r = confRoomMap[bidVal + '|' + confs[k]];
+      if (!r) return null; // missing a mapping → don't guess, fall back to old logic
+      if (rooms.indexOf(r) < 0) rooms.push(r);
+    }
+    return rooms.join(', ');
+  }
+
   var fixed = 0;
 
   for (var i = 0; i < data.length; i++) {
@@ -2068,6 +2097,21 @@ function applyManualRoomFixes() {
     var bid   = (data[i][pBid]   || '').toString().trim();
     var conf  = (data[i][pConf]  || '').toString().trim();
     var guest = (data[i][pGuest] || '').toString().trim();
+
+    // total row (multi-conf): derive room order from หมายเหตุ first —
+    // this is immune to row-sort-order bugs and hand-typed-string typos.
+    if (conf.indexOf(',') >= 0) {
+      var derived = deriveTotalRoomFromNotes(bid, notesVal);
+      if (derived && derived !== curRoom) {
+        paySheet.getRange(i + 2, pRoom + 1).setValue(derived);
+        data[i][pRoom] = derived;
+        fixed++;
+        Logger.log('applyManualRoomFixes: row '+(i+2)+' bid="'+bid+'" [from หมายเหตุ] '+curRoom+' → '+derived);
+        continue;
+      }
+      if (derived) continue; // already correct, skip fix-list loop below
+      // derivation failed (some conf missing from confRoomMap) → fall through to old fix-list logic
+    }
 
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
