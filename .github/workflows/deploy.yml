@@ -31,3 +31,6 @@ jobs:
 
       - name: Push to Apps Script
         run: clasp push --force 2>&1 || (echo "=== clasp push failed ===" && exit 1)
+
+      - name: Deploy new version (update existing Web App deployment)
+        run: clasp deploy --deploymentId AKfycbz3r-wEAImmD3jJUhTE58Z6IOQV_R1Q0iYs5imf8l4f5EUqZEdIKjQJzF4HuENgiJ4 --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
