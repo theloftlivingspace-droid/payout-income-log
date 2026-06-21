@@ -105,11 +105,43 @@ function readInvoices(ss, today) {
   var doneMap      = getDoneMap('invoice');
   var firstSeenMap = getFirstSeenMap('invoice');
 
+  // PASS 1: for SCB batch transactions, the same bid can appear on
+  // several rows — one merged "total" row (comma-separated rooms/
+  // guests/confs) PLUS one legacy single-conf row per guest. Naively
+  // keeping "whichever row comes first" in sheet order silently drops
+  // every guest except the one on that first row, since the merged
+  // row (which is what actually gets split into one invoice per guest
+  // below) gets skipped as a duplicate bid. So: pick the row with the
+  // MOST comma-separated rooms per bid — that's always the complete
+  // merged row when one exists, and falls back to the only row when
+  // a bid has just a single row.
+  var bestRowForBid = {};
+  var ciCoByConf = {};
+  for (var i = 1; i < rows.length; i++) {
+    var r0  = rows[i];
+    var bid0 = String(r0[2] || '').trim();
+    if (!bid0) continue;
+    var roomCount = String(r0[5] || '').split(',').map(function(x){ return x.trim(); }).filter(Boolean).length;
+    var cur = bestRowForBid[bid0];
+    if (!cur || roomCount > cur.roomCount) {
+      bestRowForBid[bid0] = { index: i, roomCount: roomCount };
+    }
+    // legacy single-conf rows carry that guest's actual stay dates —
+    // remember them so the merged-row split below can use real dates
+    // instead of the merged row's shared earliest/latest range.
+    var confSingle = String(r0[3] || '').trim();
+    if (confSingle && confSingle.indexOf(',') < 0) {
+      var ci0 = normDate(r0[6]), co0 = normDate(r0[7]);
+      if (ci0 && co0) ciCoByConf[confSingle] = { checkin: ci0, checkout: co0 };
+    }
+  }
+
   var result = [], seen = {};
   for (var i = 1; i < rows.length; i++) {   // row 0 = header
     var r   = rows[i];
     var bid = String(r[2] || '').trim();
     if (!bid || seen[bid]) continue;
+    if (bestRowForBid[bid] && bestRowForBid[bid].index !== i) continue; // not the chosen row for this bid
     seen[bid] = true;
 
     var detectedRaw = normDate(r[0]);
@@ -139,13 +171,15 @@ function readInvoices(ss, today) {
       // แยกเป็น row ย่อย 1 row ต่อ 1 ห้อง
       for (var j = 0; j < roomList.length; j++) {
         var iKey = bid + ':' + j;
+        var jConf = confList[j];
+        var jCiCo = (jConf && ciCoByConf[jConf]) || null;
         result.push({
           invoiceKey     : iKey,
           bookingId      : bid,
           room           : roomList[j] || rooms,
           guest          : guestList[j] || guests,
-          checkin        : checkin,
-          checkout       : checkout,
+          checkin        : jCiCo ? jCiCo.checkin  : checkin,
+          checkout       : jCiCo ? jCiCo.checkout : checkout,
           nights         : nights,
           net            : net,
           groupNet       : gross,
