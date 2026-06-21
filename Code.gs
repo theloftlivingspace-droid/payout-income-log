@@ -2226,8 +2226,12 @@ function styleSheet1(){
           updated=true;
         } else if(resId.match(/^ABB-[A-Z0-9]{8,12}(-\d{8})?$/)){
           // Mycondo conf code ไม่มี date → ใช้ check-in (col C, index 2) แทน
-          var ci=(row[2]||'').toString().trim();
-          if(ci) { row[bookingDateCol]=ci; updated=true; }
+          var ciRaw=row[2];
+          var ciDate = (ciRaw instanceof Date) ? ciRaw : (ciRaw ? new Date(ciRaw) : null);
+          if(ciDate && !isNaN(ciDate.getTime())){
+            row[bookingDateCol]=Utilities.formatDate(ciDate, 'GMT+7', 'yyyy-MM-dd');
+            updated=true;
+          }
         }
       }
     });
@@ -2273,7 +2277,8 @@ function styleSheet1(){
   var ROOM_TYPE_MAP = {
     '103':'elegance','108':'retro','113':'legacy',
     '203':'allure','204':'elegance','205':'allure',
-    '209':'radiance','210':'radiance','214':'legacy','300':'luxury'
+    '209':'radiance','210':'radiance','214':'legacy','300':'luxury',
+    '363':'mycondo'
   };
 
   var ROOM_COLORS={
@@ -2283,6 +2288,7 @@ function styleSheet1(){
     'allure'   :{bg:'#e2d9f3',font:'#4a235a'},
     'legacy'   :{bg:'#fde8d8',font:'#7d3c0a'},
     'radiance' :{bg:'#d0f0fc',font:'#0a4d6e'},
+    'mycondo'  :{bg:'#e8e0d4',font:'#5a4a32'},
     'cancel'   :{bg:'#f8d7da',font:'#721c24'},
     'ยกเลิก'   :{bg:'#f8d7da',font:'#721c24'},
     'no show'  :{bg:'#ffeeba',font:'#856404'},
