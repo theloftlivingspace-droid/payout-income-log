@@ -3036,10 +3036,8 @@ function fixBookingDatesFromEmail() {
         // ── parse guest name + checkIn จาก body ──
         var guest = '', checkIn = '';
 
-        // LH format: "Guest:
-<name>" หรือ "for <Name>, Arriving"
-        var lines = body.split('
-');
+        // LH format: "Guest:\n[name]" หรือ "for [Name], Arriving"
+        var lines = body.split('\n');
         for (var i = 0; i < lines.length; i++) {
           if (/^Guest:\s*$/.test(lines[i].trim())) {
             guest = (lines[i+1] || '').trim().replace(/\s+(Age:|Guest Count:).*$/i, '').trim();
@@ -3052,25 +3050,21 @@ function fixBookingDatesFromEmail() {
         }
         // Airbnb format: email body has guest name
         if (!guest) {
-          var am = body.match(/(?:guest|แขก)[^
-]{0,20}:\s*([A-Z][^
-]{2,40})/i);
+          var am = body.match(/(?:guest|แขก)[^\n]{0,20}:\s*([A-Z][^\n]{2,40})/i);
           if (am) guest = am[1].trim();
         }
         // fallback: parse "booked" / "จองห้อง" pattern
         if (!guest) {
-          var bm = body.match(/([\w฀-๿][\w฀-๿\s,.''-]{1,50}?)\s+(?:booked|จองห้อง)/iu);
+          var bm = body.match(/([\w\u0E00-\u0E7F][\w\u0E00-\u0E7F\s,.''-]{1,50}?)\s+(?:booked|จองห้อง)/i);
           if (bm) guest = bm[1].trim();
         }
 
         // parse checkIn จาก LH body
-        var ciMatch = body.match(/Check[- ]?[Ii]n\s*Date[:\s]*
-?(\d{2}-[A-Za-z]+-\d{4})/);
+        var ciMatch = body.match(/Check[- ]?[Ii]n\s*Date[:\s]*\n?(\d{2}-[A-Za-z]+-\d{4})/);
         if (ciMatch) checkIn = lhDateToISO(ciMatch[1]);
         if (!checkIn) {
           // LH Thai format
-          var ciTh = body.match(/วันเช็คอิน[:\s]*
-?(\d{2}-[A-Za-z]+-\d{4})/);
+          var ciTh = body.match(/วันเช็คอิน[:\s]*\n?(\d{2}-[A-Za-z]+-\d{4})/);
           if (ciTh) checkIn = lhDateToISO(ciTh[1]);
         }
         // Airbnb: "Check-in: Jun 20, 2026"
