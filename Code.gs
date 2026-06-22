@@ -54,6 +54,7 @@ const SCB_SUB_BG   = '#f1f8e9';
 // MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
 var MANUAL_ROOM_FIXES = [
+  // ── Room swap fix 2026-06-13 ──────────────────────────────────
   { conf:'BKC-seanaldcro-20260613', room:'205' },  // sean aldcroft → 205 Allure
   { conf:'ABB-maudsantoc-20260613', room:'210' },  // Maud Santocildes → 210 Radiance
   { conf:'HMQR4QJA55', room:'205' },             // Maud Santocildes → 205 Allure (Airbnb payout)
@@ -111,9 +112,30 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HM29NH5XYT', room:'103' },  // Nick Laschet / Airbnb (Jun)
   { conf:'HMMY9NZCED', room:'209' },  // Saragba Rekom C / Airbnb
   { conf:'HMWXCP29RP', room:'214' },  // Nelson Rodrigues Coutinho Junior / Airbnb
-  { bid:'SCB-2026-06-07-7648.98', room:'103, 205, 209, 214' },
+  { bid:'SCB-2026-06-07-7648.98', room:'205, 103, 209, 214' },  // order matches guest field: Cedric Nixon(205), Nick Laschet(103), Saragba Rekom C(209), Nelson(214)
   { bid:'SCB-2026-06-07-600.16',  room:'205' },  // Cedric Nixon single — reset from bad sync  // Cedric Nixon(205)+Nick Laschet(103)+Saragba(209)+Nelson(214)
-  { bid:'SCB-2026-05-05-5555.03',  room:'108, 204, 300' },  // Trip.com batch: METAWEE(204)+PAKPONG(300)+SANGWON(108)
+  // SCB-2026-04-07-9464.05: 妘芮林(103) + Avto Dagdelen(203) → total=103, 203
+  { bid:'SCB-2026-04-07-9464.05', conf:'HMPJDDT2X2', room:'103' },   // 妘芮 林
+  { bid:'SCB-2026-04-07-9464.05', conf:'HMJSD4WSQ9', room:'203' },   // Avto Dagdelen
+  { bid:'SCB-2026-04-07-9464.05', room:'103, 203' },                  // total
+
+  // SCB-2026-04-21-9177.65: Hélèm(363) + Aiman(203) → total=203, 363
+  { bid:'SCB-2026-04-21-9177.65', conf:'HMP9HW25EN', room:'363' },   // Hélèm Saouchi
+  { bid:'SCB-2026-04-21-9177.65', conf:'HMDWQA9E9H', room:'203' },   // Aiman Hamizan
+  { bid:'SCB-2026-04-21-9177.65', room:'363, 203' },                  // total — order matches guest field: Hélèm Saouchi(363), Aiman Hamizan(203)
+
+  // SCB-2026-04-27-499.80: Nick(204)+Hasan(113)+Hélèm(363)+Денис(203) → total=113,203,204,363
+  { bid:'SCB-2026-04-27-499.80', conf:'HMED99EQ8W', room:'204' },    // Nick Laschet
+  { bid:'SCB-2026-04-27-499.80', conf:'HMM2YXSJXC', room:'113' },   // Hasan Workman
+  { bid:'SCB-2026-04-27-499.80', conf:'HMP9HW25EN', room:'363' },    // Hélèm Saouchi
+  { bid:'SCB-2026-04-27-499.80', conf:'HMHY2NAW82', room:'203' },    // Денис Колескников
+  { bid:'SCB-2026-04-27-499.80', room:'204, 113, 363, 203' },         // total — order matches guest field: Nick Laschet(204), Hasan Workman(113), Hélèm Saouchi(363), Денис Колескников(203)
+
+  { bid:'SCB-2026-05-05-5555.03',  room:'300, 204, 108' },  // Trip.com batch total — order matches guest field: BOONTUM/PAKPONG(300), YAMKAMOL/METAWEE(204), NAM/SANG WON(108)
+  // SCB-2026-05-05-5555.03 sub-rows (Trip.com booking IDs)
+  { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063903', room:'300' },  // BOONTUM/PAKPONG
+  { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063939', room:'204' },  // YAMKAMOL/METAWEE
+  { bid:'SCB-2026-05-05-5555.03', conf:'1400825520948811', room:'108' },  // NAM/SANG WON
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
@@ -138,9 +160,13 @@ var MANUAL_ROOM_FIXES = [
 // AIRBNB_EXTENSIONS — conf ที่มี payout > 1 ครั้ง (แขกขออยู่ต่อ)
 // bookingId: ABB-CONF (payout แรก), ABB-CONF-EXT-COYYYYMMDD (ครั้งถัดไป)
 // ═══════════════════════════════════════════════════════════════
+// AIRBNB_EXTENSIONS — DEPRECATED: ไม่จำเป็นต้องเพิ่ม conf code ที่นี่อีกต่อไป
+// resolveAirbnbBid() จัดการ auto-suffix ให้อัตโนมัติเมื่อ net ต่างกัน
+// เก็บไว้เพื่อ backward compat กับ extSuffix logic ใน parseAirbnbEmail เท่านั้น
 var AIRBNB_EXTENSIONS = {
-  'HM9X2AW3R3':  true,  // Eiji Uenaka — extension payout
-  'HMZN329QRH':  true   // Igor Markov — 2nd payout ฿2,179.30 on 2026-06-14 (1st was ฿2,342.21)
+  'HM9X2AW3R3':  true,  // Eiji Uenaka — extension payout (legacy)
+  'HMZN329QRH':  true,  // Igor Markov — 2nd payout ฿2,179.30 on 2026-06-14 (legacy)
+  'HMMY9NZCED':  true   // Saragba Rekom C — 2nd payout ฿1,307.52 on 2026-06-16 (auto-handled now)
 };
 
 
@@ -156,7 +182,6 @@ var BOOKING_COM_SCB_MAP = [
   // { scbId: 'SCB-2026-05-26-1423.79', bids: ['6339174127'] },           // Natthaphon
   // { scbId: 'SCB-YYYY-MM-DD-AMOUNT', bids: ['BID1','BID2'], nets: ['NET1','NET2'] },  // multi
   { scbId: 'SCB-2026-06-16-2756.73', bids: ['6506062257'], nets: ['2756.73'] },  // Shahid Hussain / room 300
-  { scbId: 'SCB-2026-06-22-1022.07', bids: ['5778758059'], nets: ['1022.07'] },  // sean aldcroft / room 210 / 13-16 Jun
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -199,8 +224,45 @@ function quickReformat() {
 // ═══════════════════════════════════════════════════════════════
 // FULL REBUILD — incremental: fetch เฉพาะ rows ใหม่ที่ยังไม่มีใน sheet
 // ═══════════════════════════════════════════════════════════════
+// ลบ duplicate EXT rows ที่เกิดจาก fullRebuild ซ้ำ
+// จัดการ 2 pattern:
+//   1. ABB-CONF-EXT-N-1, -2, ... (attempt suffix) → ลบทิ้งทั้งหมด เก็บแค่ ABB-CONF-EXT-N
+//   2. bid ซ้ำกันทั้งคู่ (bid + net เหมือน) → ลบตัวหลัง
+function cleanupDuplicateExtRows() {
+  var sheet = setupSheet();
+  var last  = sheet.getLastRow();
+  if (last < 2) return;
+  var data  = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+  var seen  = {};   // bid → net
+  var toDelete = [];
+  for (var i=0; i<data.length; i++) {
+    var bid = (data[i][C.bid-1]||'').toString().trim();
+    var net = parseFloat((data[i][C.net-1]||0).toString().replace(/,/g,''))||0;
+    if (!bid) continue;
+    // pattern: ABB-CONF-EXT-N-attempt → ถ้า base bid (ABB-CONF-EXT-N) อยู่ใน seen แล้ว → ลบ
+    var attemptMatch = bid.match(/^(.+-EXT-\d+)-\d+$/);
+    if (attemptMatch) {
+      var baseBid = attemptMatch[1];
+      if (seen[baseBid] !== undefined) {
+        toDelete.push(i+2);
+        continue;
+      }
+    }
+    // bid ซ้ำทั่วไป (net เหมือน) → ลบตัวหลัง
+    if (seen[bid] !== undefined && Math.abs(seen[bid] - net) < 0.02) {
+      toDelete.push(i+2);
+    } else {
+      seen[bid] = net;
+    }
+  }
+  toDelete.sort(function(a,b){return b-a;});
+  toDelete.forEach(function(r){ sheet.deleteRow(r); });
+  Logger.log('cleanupDuplicateExtRows: deleted '+toDelete.length+' dup rows');
+}
+
 function fullRebuild() {
   var sheet    = setupSheet();
+  cleanupDuplicateExtRows();              // ลบ dup EXT rows ก่อน rebuild
   var existing = getExistingIds(sheet);   // Set ของ bookingId ที่มีอยู่แล้ว
 
   // ── fetch เฉพาะ rows ใหม่ ────────────────────────────────────
@@ -230,8 +292,14 @@ function fullRebuild() {
         try {
           s.fn(m).forEach(function(r) {
             if ((r.ota||'').startsWith('SCB') && (r.date||'') < '2026-03-01') return;
-            if (!existing.has(r.bookingId)) {
-              existing.add(r.bookingId);
+            var bid = r.bookingId;
+            if ((r.ota||'') === 'Airbnb') {
+              bid = resolveAirbnbBid(bid, Number(r.net)||0, existing);
+              if (!bid) return; // dup จริง → skip
+              r.bookingId = bid;
+            }
+            if (!existing.has(bid)) {
+              existing.set(bid, Number(r.net)||0);
               newRows.push(r);
             }
           });
@@ -268,7 +336,7 @@ function fullRebuild() {
         try {
           parseTripEmail(m).forEach(function(r) {
             if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-              tripSeen[r.bookingId] = true; existing.add(r.bookingId); newRows.push(r);
+              tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
             }
           });
         } catch(e) { Logger.log('ERR Trip: '+e.message); }
@@ -282,7 +350,7 @@ function fullRebuild() {
             if (!/Reservation no\.|trip\.com/i.test(text)) return;
             parseTripText(text, fmtDate(m.getDate()), m.getSubject()).forEach(function(r) {
               if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-                tripSeen[r.bookingId] = true; existing.add(r.bookingId); newRows.push(r);
+                tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
               }
             });
           });
@@ -336,7 +404,13 @@ function dailyEmailSync() {
       t.getMessages().forEach(function(m) {
         try { s.fn(m).forEach(function(r) {
           if ((r.ota||'').startsWith('SCB') && (r.date||'') < '2026-03-01') return;
-          if (!existing.has(r.bookingId)) { newRows.push(r); existing.add(r.bookingId); }
+          var bid2 = r.bookingId;
+          if ((r.ota||'') === 'Airbnb') {
+            bid2 = resolveAirbnbBid(bid2, Number(r.net)||0, existing);
+            if (!bid2) return;
+            r.bookingId = bid2;
+          }
+          if (!existing.has(bid2)) { newRows.push(r); existing.set(bid2, Number(r.net)||0); }
         }); } catch(e){ Logger.log('ERR: '+e.message); }
       });
     });
@@ -557,18 +631,7 @@ function parseLHEmail(msg) {
   var comm  = gRe(body,/Commission Payable[:\s]*\n?([\d,]+\.?\d*)\s*THB/);
   var remit = gRe(body,/Remittance amount[:\s]*([\d,]+\.?\d*)/);
   var roomL = gRe(body,/ROOM\s*[-–]\s*([^\n]+)/);
-  // คำนวณ net: remit → ใช้ทันที; Booking.com → หัก VAT+PSF ด้วย calcBookingComNet; อื่นๆ → total-comm แบบเดิม
-  var net;
-  if (remit) {
-    net = remit;
-  } else if (total && comm) {
-    var tAmt = parseAmt(total), cAmt = parseAmt(comm);
-    net = (ota === 'Booking.com')
-      ? calcBookingComNet(tAmt, 0, cAmt).toFixed(2)
-      : (tAmt - cAmt).toFixed(2);
-  } else {
-    net = total || '';
-  }
+  var net   = remit||(total&&comm?(parseAmt(total)-parseAmt(comm)).toFixed(2):total||'');
   var status= ota==='Booking.com'?'PrePaid - รอ Booking.com โอน':'Net Rate - รอ Expedia remittance';
 
   return [makeRow(ota,dt,bookingId,bookingId,guest,roomFromText(roomL),
@@ -731,21 +794,20 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var ref   =(refIds[j]||'').toString().trim();
     var guest =(guests[j]||'').toString().trim();
     var net   =parseAmt(nets[j]||'0');
-    var detail=detailByConf[ref]||detailByBid[ref]||{};
+    var detail=detailByConf[ref]||detailByBid[ref]||detailByBid['guest:'+normG(guest)]||{};
     var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
-
-    // ── ตรวจ MANUAL_ROOM_FIXES สำหรับ sub-row ──────────────────
-    // ถ้า conf หรือ bid ตรงกับ fix → ใช้ห้องจาก fix แทนที่จะ inherit จาก detail
-    for (var fi=0; fi<MANUAL_ROOM_FIXES.length; fi++) {
-      var fx=MANUAL_ROOM_FIXES[fi];
-      var fxMatch=false;
-      if (fx.conf && ref && ref===fx.conf) fxMatch=true;
-      if (!fxMatch && fx.bid && scbBid && scbBid===fx.bid) fxMatch=true;
-      if (fxMatch && fx.room && fx.room.indexOf(',')<0) { room=fx.room; break; }
-    }
     var ci    =dateStr(detail.ci);
     var co    =dateStr(detail.co);
     var nts   =detail.nights||'';
+    // fallback: Sheet1 ci/co/room ถ้า detail ไม่ครบ
+    if (!ci||!co||room==='?') {
+      var s1e=s1Map[normG(guest)];
+      if (s1e) {
+        if (!ci) ci=s1e.ci;
+        if (!co) co=s1e.co;
+        if (!nts) nts=s1e.nights||nightsBetween(ci,co);
+      }
+    }
     if (nts) { try { totalNights+=parseInt(nts); } catch(e){} }
     if (ci) { var ciD=new Date(ci); if (!earliest||ciD<earliest) earliest=ciD; }
     if (co) { var coD=new Date(co); if (!latest  ||coD>latest  ) latest  =coD; }
@@ -1345,7 +1407,7 @@ function tryParseTripMsg(m,existing,seen,newRows){
   try {
     parseTripHtmlMsg(m).forEach(function(r){
       if (!existing.has(r.bookingId)&&!seen[r.bookingId]){
-        newRows.push(r); existing.add(r.bookingId); seen[r.bookingId]=true;
+        newRows.push(r); existing.set(r.bookingId, Number(r.net)||0); seen[r.bookingId]=true;
       }
     });
   } catch(e){ Logger.log('ERR Trip body: '+e.message); }
@@ -1362,7 +1424,7 @@ function tryParseTripAttachments(m,existing,seen,newRows){
         parseTripText(stripHTML(content.replace(/=\r?\n/g,'').replace(/=3D/g,'=')),dt,m.getSubject())
           .forEach(function(r){
             if (!existing.has(r.bookingId)&&!seen[r.bookingId]){
-              newRows.push(r); existing.add(r.bookingId); seen[r.bookingId]=true;
+              newRows.push(r); existing.set(r.bookingId, Number(r.net)||0); seen[r.bookingId]=true;
             }
           });
       } catch(e2){ Logger.log('ERR Trip att['+ai+']: '+e2.message); }
@@ -1425,7 +1487,7 @@ function manualMatchSCBtoTrip(){
     });
 
     var scbAmt =fmtAmt(data[scbRowIdx][C.net-1]);
-    var scbDate=(data[scbRowIdx][C.date-1]||'').toString().substring(0,10);
+    var scbDate=normalizeDate(data[scbRowIdx][C.date-1]||'');
     var scbOTA =(data[scbRowIdx][C.ota-1]||'').toString();
     var scbBid =(data[scbRowIdx][C.bid-1]||'').toString();
 
@@ -1454,6 +1516,26 @@ function manualMatchSCBtoTrip(){
   });
   Logger.log('manualMatchSCBtoTrip: '+matched+' matched');
   SpreadsheetApp.getActiveSpreadsheet().toast('Match Trip.com: '+matched+' รายการ','Done',4);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// doPost — trigger actions from external services (e.g. hotel-line-bot)
+// ═══════════════════════════════════════════════════════════════
+function doPost(e) {
+  try {
+    var body = JSON.parse(e.postData.contents);
+    var action = body.action || '';
+    if (action === 'styleSheet1') {
+      styleSheet1();
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, action: 'styleSheet1' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'unknown action: ' + action }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1539,6 +1621,7 @@ function getDashboardDataAsString(){ return getDashboardData().getContent(); }
 // รัน after matchSCBtoOTA (จะไม่ re-match rows ที่มี ✅ แล้ว)
 // ═══════════════════════════════════════════════════════════════
 function matchBookingComSCB() {
+  if (!BOOKING_COM_SCB_MAP.length) return;
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
   if (!sheet) return;
@@ -1546,14 +1629,23 @@ function matchBookingComSCB() {
   if (last < 2) return;
   var data = sheet.getRange(2, 1, last-1, HEADERS.length).getValues();
 
+  // index SCB rows by bid
+  var scbIndex = {};
+  data.forEach(function(row, i) {
+    var ota = (row[C.ota-1]||'').toString().trim();
+    if (!ota.startsWith('SCB')) return;
+    var bid = (row[C.bid-1]||'').toString().trim();
+    scbIndex[bid] = { rowIdx: i, notes: (row[C.notes-1]||'').toString() };
+  });
+
   // index Booking.com rows by bid
   var bkIndex = {};
-  data.forEach(function(row) {
-    var ota = (row[C.ota-1]||'').toString().trim();
-    if (ota !== 'Booking.com' && ota !== 'Booking') return;
+  data.forEach(function(row, i) {
+    var _bkOta=(row[C.ota-1]||'').toString().trim(); if (_bkOta!=='Booking.com'&&_bkOta!=='Booking') return;
     var bid = (row[C.bid-1]||'').toString().trim();
     bkIndex[bid] = {
       guest:  (row[C.guest-1]||'').toString().trim(),
+      net:    fmtAmt(row[C.net-1]),
       ci:     row[C.ci-1],
       co:     row[C.co-1],
       nights: row[C.nights-1],
@@ -1561,85 +1653,34 @@ function matchBookingComSCB() {
     };
   });
 
-  // ─── ① auto-detect: SCB rows ที่มี booking ID พิมพ์ใน conf field ───
-  // Nathan พิมพ์ booking ID (เช่น 5778758059, หรือ 5001,5002) ใน col D แล้ว match อัตโนมัติ
-  // รองรับ multi-booking: คั่นด้วย comma/space (เช่น "5778758059, 6001234567")
-  var autoEntries = [];
-  data.forEach(function(row, i) {
-    var ota = (row[C.ota-1]||'').toString().trim();
-    if (!ota.startsWith('SCB')) return;
-    var notes = (row[C.notes-1]||'').toString();
-    if (notes.indexOf('✅') === 0) return;  // already matched
-    var conf = (row[C.conf-1]||'').toString().trim();
-    if (!conf) return;
-    // ถ้า conf field มีตัวเลข 7-13 หลัก = Booking.com booking ID
-    var ids = conf.split(/[\s,]+/).filter(function(s){ return /^\d{7,13}$/.test(s); });
-    if (!ids.length) return;
-    var scbBid = (row[C.bid-1]||'').toString().trim();
-    var scbAmt = fmtAmt(row[C.net-1]);
-    autoEntries.push({ rowIdx: i, scbBid: scbBid, scbAmt: scbAmt, bids: ids,
-                       scbOTA: ota, notes: notes });
-  });
-
-  // ─── ② hardcoded map (legacy — ยังรองรับของเก่าที่ยังไม่ได้ย้ายไปพิมพ์ใน sheet) ───
-  var mapEntries = [];
-  BOOKING_COM_SCB_MAP.forEach(function(entry) {
-    // หา SCB row จาก scbId
-    var found = null;
-    data.forEach(function(row, i) {
-      if ((row[C.bid-1]||'').toString().trim() === entry.scbId) found = { rowIdx: i, row: row };
-    });
-    if (!found) { Logger.log('matchBookingComSCB: SCB not found: ' + entry.scbId); return; }
-    var notes = (found.row[C.notes-1]||'').toString();
-    if (notes.indexOf('✅') === 0) { Logger.log('matchBookingComSCB: already matched: ' + entry.scbId); return; }
-    mapEntries.push({
-      rowIdx:  found.rowIdx,
-      scbBid:  entry.scbId,
-      scbAmt:  fmtAmt(found.row[C.net-1]),
-      scbOTA:  (found.row[C.ota-1]||'').toString(),
-      notes:   notes,
-      bids:    entry.bids,
-      nets:    entry.nets || null   // legacy map อาจระบุ nets ชัดเจน
-    });
-  });
-
-  // ─── process รวมทั้ง auto + map (เรียงจาก rowIdx มากไปน้อยเพื่อกัน index shift) ───
-  var allEntries = autoEntries.concat(mapEntries);
-  allEntries.sort(function(a,b){ return b.rowIdx - a.rowIdx; });
-
   var matched = 0;
-  allEntries.forEach(function(entry) {
-    var scbDate = dateStr(data[entry.rowIdx][C.date-1]);
-    var acctM   = entry.notes.match(/x[\dX]+/);
+  BOOKING_COM_SCB_MAP.forEach(function(entry) {
+    var scb = scbIndex[entry.scbId];
+    if (!scb) { Logger.log('matchBookingComSCB: SCB not found: ' + entry.scbId); return; }
+    if (scb.notes.indexOf('✅') === 0) { Logger.log('matchBookingComSCB: already matched: ' + entry.scbId); return; }
+
+    var scbRow  = data[scb.rowIdx];
+    var scbAmt  = fmtAmt(scbRow[C.net-1]);
+    var scbDate = dateStr(scbRow[C.date-1]);
+    var scbOTA  = (scbRow[C.ota-1]||'').toString();
+    var scbBid  = (scbRow[C.bid-1]||'').toString().trim();
+    var acctM   = scb.notes.match(/x[\dX]+/);
     var scbAcct = acctM ? acctM[0] : 'x256221';
 
-    var bids    = entry.bids;
-    var guests  = bids.map(function(b){ return bkIndex[b] ? bkIndex[b].guest : '?'; });
-
-    // net ใช้ SCB amount เป็นหลัก — แบ่งเท่าๆ กันถ้า multi-booking
-    // (ถ้า legacy map ระบุ nets ไว้ชัดเจน ก็ใช้ตามนั้น)
-    var nets;
-    if (entry.nets) {
-      nets = entry.nets.map(String);
-    } else if (bids.length === 1) {
-      nets = [entry.scbAmt];
-    } else {
-      // multi: แบ่ง SCB amount ตามสัดส่วน nights ถ้าทราบ, ไม่งั้นแบ่งเท่าๆ กัน
-      var totalNights = bids.reduce(function(s,b){ return s + (bkIndex[b] ? (parseFloat(bkIndex[b].nights)||1) : 1); }, 0);
-      var scbTotal = parseFloat(entry.scbAmt) || 0;
-      nets = bids.map(function(b){
-        var n = bkIndex[b] ? (parseFloat(bkIndex[b].nights)||1) : 1;
-        return (Math.round(scbTotal * n / totalNights * 100) / 100).toFixed(2);
-      });
-    }
+    var bids   = entry.bids;
+    var guests = bids.map(function(b) { return bkIndex[b] ? bkIndex[b].guest : '?'; });
+    // ใช้ nets จาก map ถ้าระบุ, ไม่งั้นใช้ net จาก sheet
+    var nets   = entry.nets
+      ? entry.nets.map(String)
+      : bids.map(function(b) { return bkIndex[b] ? bkIndex[b].net : '0'; });
 
     var detailByBid = {};
-    bids.forEach(function(b){ if (bkIndex[b]) detailByBid[b] = bkIndex[b]; });
+    bids.forEach(function(b) { if (bkIndex[b]) detailByBid[b] = bkIndex[b]; });
 
-    var insertRows = buildSCBRows(entry.scbOTA, scbDate, entry.scbBid, entry.scbAmt, scbAcct,
+    var insertRows = buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
       bids, guests, nets, {}, detailByBid, 'Booking.com remittance');
 
-    var sr = entry.rowIdx + 2;
+    var sr = scb.rowIdx + 2;
     sheet.deleteRow(sr);
     insertRows.forEach(function(r, idx) {
       sheet.insertRowBefore(sr + idx);
@@ -1659,9 +1700,8 @@ function matchBookingComSCB() {
       sheet.getRange(sr+idx, 10, 1, 3).setNumberFormat('#,##0.00');
     });
     matched++;
-    Logger.log('matchBookingComSCB: matched ' + entry.scbBid + ' → ' + bids.join(', ') + ' (net SCB: ' + entry.scbAmt + ')');
+    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', '));
   });
-
   Logger.log('matchBookingComSCB: ' + matched + ' SCB rows matched');
   if (matched > 0) SpreadsheetApp.getActiveSpreadsheet()
     .toast('Booking.com match: ' + matched + ' รายการ', 'Done', 4);
@@ -1868,6 +1908,11 @@ function setupSheet(){
   sheet.showColumns(1, HEADERS.length);  // unhide all columns
   [110,110,180,140,200,80,105,105,55,110,115,110,200,300]
     .forEach(function(w,i){sheet.setColumnWidth(i+1,w);});
+  // Force date columns to ISO format for all existing + future rows
+  var maxRow = Math.max(sheet.getLastRow(), 2);
+  [C.date, C.ci, C.co].forEach(function(col){
+    sheet.getRange(2, col, maxRow, 1).setNumberFormat('yyyy-mm-dd');
+  });
   return sheet;
 }
 function clearDataRows(sheet){
@@ -1876,8 +1921,36 @@ function clearDataRows(sheet){
 }
 function getExistingIds(sheet){
   var last=sheet.getLastRow();
-  if (last<2) return new Set();
-  return new Set(sheet.getRange(2,3,last-1,1).getValues().flat().filter(Boolean));
+  if (last<2) return new Map();
+  var vals=sheet.getRange(2,3,last-1,2).getValues(); // col C=bookingId, col D=confCode (unused here)
+  // col L (net) = column 12, offset from col C = col 3 → need cols C and L
+  // re-fetch with correct columns: C=3, L=12 → getRange(2,3,last-1,10) gives C..L
+  var bidCol=sheet.getRange(2,3,last-1,1).getValues().flat();
+  var netCol=sheet.getRange(2,12,last-1,1).getValues().flat();
+  var map=new Map();
+  for(var i=0;i<bidCol.length;i++){
+    var b=bidCol[i]; if(!b) continue;
+    b=String(b);
+    if(!map.has(b)) map.set(b, Number(netCol[i])||0);
+  }
+  return map;
+}
+// helper: ถ้า Airbnb bookingId ชน + net ต่างกัน → auto-suffix เพื่อไม่ต้อง whitelist
+function resolveAirbnbBid(bid, net, existing){
+  if(!existing.has(bid)) return bid;            // ไม่ชน → ใช้ bid เดิม
+  var existingNet=existing.get(bid);
+  if(Math.abs(existingNet - net)<0.02) return null; // ชน + net เหมือน → dup จริง → skip
+  // ชน + net ต่าง → extension/split payout → สร้าง suffix ใหม่
+  var suffix='-EXT-'+(net*100).toFixed(0);
+  var newBid=bid+suffix;
+  // ถ้า newBid มีอยู่แล้ว และ net เหมือน → dup ของ split นี้ → skip
+  if(existing.has(newBid)&&Math.abs(existing.get(newBid)-net)<0.02) return null;
+  // กัน loop ถ้ามีซ้ำกันอีก (net ต่างกันจริงๆ)
+  var attempt=0;
+  while(existing.has(newBid)&&attempt<10){
+    attempt++; newBid=bid+suffix+'-'+attempt;
+  }
+  return newBid;
 }
 function appendRow(sheet,row){
   var r=sheet.getLastRow()+1;
@@ -1887,6 +1960,9 @@ function appendRow(sheet,row){
     row.guest,roomVal,row.checkIn,row.checkOut,row.nights,
     row.total,row.commission,row.net,row.status,row.notes
   ]]);
+  sheet.getRange(r,C.date).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(r,C.ci).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(r,C.co).setNumberFormat('yyyy-mm-dd');
   sheet.getRange(r,C.bid).setNumberFormat('@');
   sheet.getRange(r,C.conf).setNumberFormat('@');
   var bg;
@@ -2001,42 +2077,102 @@ function applyManualRoomFixes() {
   var pOTA   = pH.indexOf('OTA');
   var pGuest = pH.indexOf('ชื่อแขก');
 
+  // bid+conf room lookup built from the curated single-guest entries in
+  // MANUAL_ROOM_FIXES (these map one specific conf code to one verified
+  // room and are not order-dependent). Used below to auto-derive a total
+  // row's multi-room string from its หมายเหตุ field's guest(conf) order —
+  // which is written once at row-creation time and never reshuffled,
+  // unlike the room column itself — instead of trusting a separately
+  // hand-typed comma-joined room string that can silently fall out of
+  // sync with the guest order.
+  var confRoomMap = {};
+  MANUAL_ROOM_FIXES.forEach(function(fx) {
+    if (fx.bid && fx.conf && fx.conf.indexOf(',') < 0 && fx.room && fx.room.indexOf(',') < 0) {
+      confRoomMap[fx.bid + '|' + fx.conf] = fx.room;
+    }
+  });
+
+  function deriveTotalRoomFromNotes(bidVal, notesText) {
+    var confs = [];
+    var re = /\(([^)]+)\)/g, m;
+    while ((m = re.exec(notesText))) confs.push(m[1].trim());
+    if (confs.length < 2) return null;
+    var rooms = [];
+    for (var k = 0; k < confs.length; k++) {
+      var r = confRoomMap[bidVal + '|' + confs[k]];
+      if (!r) return null; // missing a mapping → don't guess, fall back to old logic
+      if (rooms.indexOf(r) < 0) rooms.push(r);
+    }
+    return rooms.join(', ');
+  }
+
   var fixed = 0;
 
   for (var i = 0; i < data.length; i++) {
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
-    // ไม่ skip sub-rows อีกต่อไป — MANUAL_ROOM_FIXES ต้องแก้ sub-rows ได้ด้วย
+    if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip sub-rows
 
     var curRoom = (data[i][pRoom] || '').toString().trim();
     var bid   = (data[i][pBid]   || '').toString().trim();
     var conf  = (data[i][pConf]  || '').toString().trim();
     var guest = (data[i][pGuest] || '').toString().trim();
 
+    // total row (multi-conf): derive room order from หมายเหตุ first —
+    // this is immune to row-sort-order bugs and hand-typed-string typos.
+    if (conf.indexOf(',') >= 0) {
+      var derived = deriveTotalRoomFromNotes(bid, notesVal);
+      if (derived && derived !== curRoom) {
+        paySheet.getRange(i + 2, pRoom + 1).setValue(derived);
+        data[i][pRoom] = derived;
+        fixed++;
+        Logger.log('applyManualRoomFixes: row '+(i+2)+' bid="'+bid+'" [from หมายเหตุ] '+curRoom+' → '+derived);
+        continue;
+      }
+      if (derived) continue; // already correct, skip fix-list loop below
+      // derivation failed (some conf missing from confRoomMap) → fall through to old fix-list logic
+    }
+
     for (var fi = 0; fi < MANUAL_ROOM_FIXES.length; fi++) {
       var fix = MANUAL_ROOM_FIXES[fi];
       var matched = false;
-      if (!matched && fix.conf  && conf  && (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0))  matched = true;
-      if (!matched && fix.bid   && bid   && bid   === fix.bid)   matched = true;
+      // bid+conf: ใช้ fix ที่ระบุทั้ง bid และ conf → match เฉพาะ row นั้น (sub-row specific)
+      // ห้ามแตะ total row (conf ที่มีหลาย values คั่น comma) ด้วยกฎนี้ เว้นแต่ fix.conf
+      // จะเป็น string เดียวกับ conf เต็มของ total row พอดี (i.e. ตั้งใจ fix total row จริงๆ)
+      if (!matched && fix.bid && fix.conf && bid === fix.bid) {
+        var curConfList = conf.split(',').map(function(s){return s.trim();});
+        var curIsTotalRow = curConfList.length > 1;
+        if (curIsTotalRow) {
+          if (conf === fix.conf) matched = true;
+        } else if (conf === fix.conf || curConfList.indexOf(fix.conf) >= 0) {
+          matched = true;
+        }
+      }
+      // conf-only หรือ bid-only หรือ guest-only
+      if (!matched && !fix.conf && fix.bid && bid && bid === fix.bid) {
+        // bid-only fix → ใช้กับ total row เท่านั้น (sub-rows มี conf เดี่ยว ไม่ใช่ comma list)
+        var isSubRow = otaVal.startsWith('SCB') && conf && conf.indexOf(',') < 0 && bid === fix.bid && !notesVal.startsWith('\u2705 Matched');
+        if (!isSubRow) matched = true;
+      }
+      if (!matched && fix.conf && !fix.bid && conf) {
+        var confList = conf.split(',').map(function(s){return s.trim();});
+        // conf-only fix: ห้ามแตะ total row (conf ที่มีหลาย values = total row)
+        var isTotalRow = confList.length > 1;
+        if (!isTotalRow && (conf === fix.conf || confList.indexOf(fix.conf) >= 0)) matched = true;
+      }
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
 
-      // ── skip logic ──────────────────────────────────────────────
-      // ONLY skip ถ้า: ไม่มี conf match (match ด้วย bid เท่านั้น) และห้องปัจจุบันถูกต้องอยู่แล้ว
-      // ถ้า conf match → แก้เสมอ (conf specific กว่า bid)
-      var matchedByConf = fix.conf && conf &&
-        (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0);
       var isMultiFix = fix.room.indexOf(',') >= 0;
       var isMultiCur = curRoom.indexOf(',') >= 0;
+
+      // skip only if: current room is valid single AND fix is also single AND room is a known valid room
+      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi, OR room not in known list
       var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
       var curRoomKnown = KNOWN_ROOMS.indexOf(curRoom) >= 0;
+      if (isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
 
-      // ถ้าห้องถูกต้องแล้ว (เท่ากับที่ fix กำหนด) → skip
-      if (curRoom === fix.room) break;
-
-      // ถ้า match ด้วย bid เท่านั้น (ไม่มี conf) และห้องเป็น valid known room → skip
-      // (ป้องกัน bid ซ้ำกันในหลาย sub-rows แก้ผิดแถว)
-      if (!matchedByConf && isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
+      if (curRoom === fix.room) break; // already correct, no write needed
       paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
       data[i][pRoom] = fix.room;
       fixed++;
@@ -2071,16 +2207,97 @@ function styleSheet1(){
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
+
+  // ── Deduplicate: ลบ "รอยืนยัน" rows ที่ conf code ซ้ำกับ row ที่มีห้องจริงแล้ว ──
+  // เกิดจาก email-sync สร้าง row ซ้ำทุกครั้งที่ sync (bug ที่แก้แล้วใน email-sync.js)
+  // แต่ของเก่าที่ค้างอยู่ใน sheet ต้องลบด้วย logic นี้
+  if (lastRow>1){
+    var dupData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
+    // สร้าง set ของ base conf code ที่มีห้องจริงแล้ว (col A ไม่ใช่ "รอยืนยัน")
+    var realConfs={};
+    dupData.forEach(function(row){
+      var room=String(row[0]||'').trim();
+      var resId=String(row[5]||'').trim();
+      if(room && room!=='รอยืนยัน'){
+        // extract base conf: ABB-HMRKPSAX9F-20260621 → ABB-HMRKPSAX9F
+        var base=resId.replace(/-\d{8}$/, '');
+        realConfs[base]=true;
+      }
+    });
+    // หา row index ที่ต้องลบ (รอยืนยัน + conf base ซ้ำ) — ลบจากท้ายขึ้นบน
+    var toDelete=[];
+    dupData.forEach(function(row,i){
+      var room=String(row[0]||'').trim();
+      if(room==='รอยืนยัน'){
+        var resId=String(row[5]||'').trim();
+        var base=resId.replace(/-\d{8}$/, '');
+        if(realConfs[base]) toDelete.push(i+2); // +2: 1-indexed + header row
+      }
+    });
+    toDelete.sort(function(a,b){return b-a;});
+    toDelete.forEach(function(r){ sh.deleteRow(r); });
+    lastRow=sh.getLastRow();
+  }
+
+  // ── Fill/normalize col H (วันจอง) จาก ResId ──
+  // เงื่อนไข needsFix ครอบคลุม 2 กรณี: (1) ว่างเปล่า (2) เป็น raw Date object
+  // ที่ยังไม่ถูก normalize เป็น YYYY-MM-DD string (ของเก่าก่อน fix นี้)
+  var lastRow=sh.getLastRow(), lastCol=8;
+  if (lastRow>1){
+    var allData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
+    var resIdCol=5, bookingDateCol=7; // 0-indexed
+    var updated=false;
+    allData.forEach(function(row,i){
+      var cur=row[bookingDateCol];
+      var needsFix = !cur || (cur instanceof Date);
+      if (needsFix){
+        var resId=(row[resIdCol]||'').toString().trim();
+        // ResId format: XXX-yyyyname-YYYYMMDD หรือ XXX-CONFCODE
+        var m=resId.match(/(\d{8})$/);
+        if(m){
+          // มี date suffix ปกติ: ABB-luisens-20260630
+          var d=m[1];
+          row[bookingDateCol]=d.substring(0,4)+'-'+d.substring(4,6)+'-'+d.substring(6,8);
+          updated=true;
+        } else if(resId.match(/^ABB-[A-Z0-9]{8,12}(-\d{8})?$/)){
+          // Mycondo conf code ไม่มี date → ใช้ check-in (col C, index 2) แทน
+          var ciRaw=row[2];
+          var ciDate = (ciRaw instanceof Date) ? ciRaw : (ciRaw ? new Date(ciRaw) : null);
+          if(ciDate && !isNaN(ciDate.getTime())){
+            row[bookingDateCol]=Utilities.formatDate(ciDate, 'GMT+7', 'yyyy-MM-dd');
+            updated=true;
+          }
+        }
+      }
+    });
+    if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
+  }
+
+  // ── Sort by วันจอง (col H, index 7) ascending ──
+  if (lastRow>2){
+    var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
+    var rows=dataRange.getValues();
+    rows.sort(function(a,b){
+      var da=a[7]?new Date(a[7]):new Date('9999-12-31');
+      var db=b[7]?new Date(b[7]):new Date('9999-12-31');
+      return da-db;
+    });
+    dataRange.setValues(rows);
+    lastRow=sh.getLastRow();
+  }
+
   sh.clearFormats();
-  var lastRow=sh.getLastRow(), lastCol=7;
+  lastRow=sh.getLastRow(); lastCol=8;
   if (lastRow<1) return;
 
   sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
-  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200);
+  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200); sh.setColumnWidth(8,110);
 
   var header=sh.getRange(1,1,1,lastCol);
   header.setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
         .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  // col H — วันจอง: center + date color
+  sh.getRange(2,8,Math.max(lastRow-1,1),1).setHorizontalAlignment('center').setFontColor('#666666').setFontSize(9);
   sh.setRowHeight(1,36); sh.setFrozenRows(1);
 
   // base alternating rows
@@ -2095,7 +2312,8 @@ function styleSheet1(){
   var ROOM_TYPE_MAP = {
     '103':'elegance','108':'retro','113':'legacy',
     '203':'allure','204':'elegance','205':'allure',
-    '209':'radiance','210':'radiance','214':'legacy','300':'luxury'
+    '209':'radiance','210':'radiance','214':'legacy','300':'luxury',
+    '363':'mycondo'
   };
 
   var ROOM_COLORS={
@@ -2105,6 +2323,7 @@ function styleSheet1(){
     'allure'   :{bg:'#e2d9f3',font:'#4a235a'},
     'legacy'   :{bg:'#fde8d8',font:'#7d3c0a'},
     'radiance' :{bg:'#d0f0fc',font:'#0a4d6e'},
+    'mycondo'  :{bg:'#e8e0d4',font:'#5a4a32'},
     'cancel'   :{bg:'#f8d7da',font:'#721c24'},
     'ยกเลิก'   :{bg:'#f8d7da',font:'#721c24'},
     'no show'  :{bg:'#ffeeba',font:'#856404'},
@@ -2172,7 +2391,7 @@ function styleSheet1(){
   });
 
   sh.getRange(2,3,lastRow-1,2).setHorizontalAlignment('center');
-  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note'];
+  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง'];
   sh.getRange(1,1,1,lastCol).setValues([SH]);
   sh.getRange(1,1,lastRow,lastCol).setBorder(true,true,true,true,false,false,'#cccccc',SpreadsheetApp.BorderStyle.SOLID);
   sh.getRange(2,1,lastRow-1,lastCol).setBorder(false,false,false,false,false,true,'#e0e0e0',SpreadsheetApp.BorderStyle.SOLID);
@@ -2227,21 +2446,47 @@ function syncSCBTotalRooms() {
         continue;
       }
 
-      // collect rooms from sub-rows ONLY
+      // collect rooms from sub-rows ONLY, keyed by guest name so we can
+      // re-align them to the total row's guest order below (sub-rows can
+      // get physically reordered by sortPayoutByOTA, independent of the
+      // guest order baked into the total row's "ชื่อแขก"/note columns —
+      // joining by scan order alone causes guest[i] ↔ room[i] mismatches).
       var rooms = [];
+      var roomByGuest = {};
+      var totalNet = parseFloat((data[i][C.net-1]||'0').toString().replace(/,/g,''))||0;
       var totalRoom = (data[i][pRoom] || '').toString().trim();
+      var totalGuestField = (data[i][C.guest-1] || '').toString().trim();
       var j = i + 1;
       while (j < data.length) {
         var subNotes = (data[j][pNotes] || '').toString().trim();
         var subOTA   = (data[j][pOTA]   || '').toString().trim();
-        if (!subOTA.startsWith('SCB') || !subNotes.startsWith('\u21b3')) break;
+        var subNet   = parseFloat((data[j][C.net-1]||'0').toString().replace(/,/g,''))||0;
+        // sub-row: same SCB OTA, same bid, net < total, starts with ↳ OR ✅ (old format)
+        if (!subOTA.startsWith('SCB')) break;
+        var subBid = (data[j][pBid]||'').toString().trim();
+        if (subBid !== bid) break;
+        var isSubRow = subNotes.startsWith('\u21b3') || 
+                       (subNotes.startsWith('\u2705') && subNet < totalNet - 0.01);
+        if (!isSubRow) break;
         var subRoom = (data[j][pRoom] || '').toString().trim();
-        if (subRoom && subRoom !== '?' && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        if (subRoom && subRoom !== '?' && !subRoom.includes(',') && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
+        var subGuest = (data[j][C.guest-1] || '').toString().trim();
+        if (subGuest && subRoom && subRoom !== '?' && !(subGuest in roomByGuest)) roomByGuest[subGuest] = subRoom;
         j++;
       }
       var hadSubRows = (j > i + 1);
       if (hadSubRows && rooms.length > 1) {
-        var merged = rooms.join(', ');
+        // re-derive room order from the total row's existing guest order
+        // (falls back to scan order for any guest we couldn't match)
+        var guestOrder = totalGuestField ? totalGuestField.split(',').map(function(g){ return g.trim(); }) : [];
+        var orderedRooms = [];
+        guestOrder.forEach(function(g) {
+          var r = roomByGuest[g];
+          if (r && orderedRooms.indexOf(r) < 0) orderedRooms.push(r);
+        });
+        // append any rooms we couldn't align via guest name (safety net)
+        rooms.forEach(function(r) { if (orderedRooms.indexOf(r) < 0) orderedRooms.push(r); });
+        var merged = orderedRooms.length === rooms.length ? orderedRooms.join(', ') : rooms.join(', ');
         if (merged !== totalRoom) {
           sheet.getRange(i+2, pRoom+1).setValue(merged);
           data[i][pRoom] = merged;
@@ -2260,7 +2505,17 @@ function syncSCBTotalRooms() {
 // ═══════════════════════════════════════════════════════════════
 // OVERRIDE: matchSCBtoOTA — match Airbnb by net sum (not gross total)
 // ═══════════════════════════════════════════════════════════════
+function normalizeDate(v) {
+  if (v instanceof Date) return Utilities.formatDate(v,'Asia/Bangkok','yyyy-MM-dd');
+  var s = v.toString().trim();
+  var sl = s.split('/');
+  if (sl.length===3 && sl[2].length===4)
+    return sl[2]+'-'+sl[0].padStart(2,'0')+'-'+sl[1].padStart(2,'0');
+  return s.substring(0,10);
+}
 function matchSCBtoOTA(sheet) {
+  if (!sheet) { var ss=SpreadsheetApp.openById(MASTER_SHEET_ID); sheet=ss.getSheetByName(TAB_NAME); }
+  if (!sheet) { Logger.log('matchSCBtoOTA: sheet not found'); return; }
   var last=sheet.getLastRow();
   if (last<2) return;
   var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
@@ -2279,18 +2534,7 @@ function matchSCBtoOTA(sheet) {
       ci:    row[C.ci-1], co:row[C.co-1],
       nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
     };
-    // ── ตรวจ MANUAL_ROOM_FIXES ตั้งแต่ตอนสร้าง entry ──────────
-    // ป้องกัน wrong room วนซ้ำกลับเข้า detailByConf
-    for (var _fi=0; _fi<MANUAL_ROOM_FIXES.length; _fi++) {
-      var _fx=MANUAL_ROOM_FIXES[_fi];
-      if (_fx.conf && conf && conf===_fx.conf && _fx.room && _fx.room.indexOf(',')<0) {
-        entry.room=_fx.room; break;
-      }
-      if (_fx.bid && bid && bid===_fx.bid && _fx.room && _fx.room.indexOf(',')<0) {
-        entry.room=_fx.room; break;
-      }
-    }
-    if (conf&&/^[A-Z0-9]{6,14}$/.test(conf)) detailByConf[conf]=entry;
+    if (conf&&(/^[A-Z0-9]{6,14}$/.test(conf)||/^\d{10,20}$/.test(conf))) detailByConf[conf]=entry;
     if (bid) detailByBid[bid]=entry;
     var gk2=normG(guestRaw);
     if (gk2) detailByBid['guest:'+gk2]=entry;
@@ -2299,19 +2543,23 @@ function matchSCBtoOTA(sheet) {
   // Build Airbnb batches keyed by NET SUM (not gross total)
   // Group rows by payout date window (same day) → sum nets
   var airbnbByDate={};  // date → [{conf,guest,net,total}]
+  // dedup by bookingId — ไม่ใช่ confCode เพราะ conf เดียวกันมีหลาย payout ได้ (multi-payout)
+  var _airbnbSeenBid={};
   data.forEach(function(row) {
     var ota=(row[C.ota-1]||'').toString().trim();
     if (ota!=='Airbnb') return;
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     var bt =parseFloat((row[C.total-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
+    var bid =(row[C.bid-1]||'').toString().trim();
+    var conf=(row[C.conf-1]||'').toString().trim();
+    if (bid && _airbnbSeenBid[bid]) return;
+    if (bid) _airbnbSeenBid[bid]=true;
     var raw=row[C.date-1];
-    var dt=raw instanceof Date
-      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
-      :raw.toString().substring(0,10);
+    var dt=normalizeDate(raw);
     if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
     airbnbByDate[dt].push({
-      conf:(row[C.conf-1]||'').toString(),
+      conf:conf,
       guest:(row[C.guest-1]||'').toString(),
       net:net, total:bt,
       netStr:fmtAmt(row[C.net-1])
@@ -2383,9 +2631,7 @@ function matchSCBtoOTA(sheet) {
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
     var raw=row[C.date-1];
-    var dt=raw instanceof Date
-      ?Utilities.formatDate(raw,'Asia/Bangkok','yyyy-MM-dd')
-      :raw.toString().substring(0,10);
+    var dt=normalizeDate(raw);
     var mon=dt.substring(0,7);
     var entry={
       guest:(row[C.guest-1]||'').toString(),
@@ -2445,18 +2691,27 @@ function matchSCBtoOTA(sheet) {
     }
   });
 
+  // Pre-build set of SCB bids already matched (any row with ✅ or ↳ in notes)
+  var matchedScbBids={};
+  data.forEach(function(row){
+    var ota  =(row[C.ota-1]  ||'').toString();
+    var notes=(row[C.notes-1]||'').toString();
+    var bid  =(row[C.bid-1]  ||'').toString();
+    if (!ota.startsWith('SCB')) return;
+    if (notes.indexOf('✅')===0 || notes.indexOf('↳')===0) matchedScbBids[bid]=true;
+  });
+
   var replacements=[];
   data.forEach(function(row,i) {
     var ota  =(row[C.ota-1]  ||'').toString();
     var notes=(row[C.notes-1]||'').toString();
+    var bid  =(row[C.bid-1]  ||'').toString();
     if (!ota.startsWith('SCB')) return;
-    if (notes.indexOf('✅')===0) return;
+    if (matchedScbBids[bid]) return;  // entire bid already matched/expanded
 
     var scbAmt =fmtAmt(row[C.net-1]);
     var rawD   =row[C.date-1];
-    var scbDate=rawD instanceof Date
-      ?Utilities.formatDate(rawD,'Asia/Bangkok','yyyy-MM-dd')
-      :rawD.toString().substring(0,10);
+    var scbDate=normalizeDate(rawD);
     var scbOTA =(row[C.ota-1]||'').toString();
     var scbBid =(row[C.bid-1]||'').toString().trim();
     var acctM  =(row[C.notes-1]||'').toString().match(/x[\dX]+/);
@@ -2956,7 +3211,7 @@ function fixUnmatchedRows() {
     'SCB-2026-05-05-5555.03': {
       conf:'1622926832063903, 1622926832063939, 1400825520948811',
       guest:'BOONTUM/PAKPONG, YAMKAMOL/METAWEE, NAM/SANG WON',
-      room:'108, 204, 300',
+      room:'300, 204, 108',
       ci:'', co:'', nights:'',
       net:5555.03,
       status:'✅ Matched - Trip.com settlement',
@@ -3034,4 +3289,6 @@ function parseDate_(v) {
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
+
+
 
