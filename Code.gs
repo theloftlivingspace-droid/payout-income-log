@@ -2270,17 +2270,33 @@ function styleSheet1(){
         }
       }
     });
-    if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
+  // ── Set col H (วันจอง) เป็น Plain text ก่อน write ──
+  // ป้องกัน Sheets auto-convert "2026-06-01" string กลับเป็น Date object
+  if(lastRow>1) sh.getRange(2,8,lastRow-1,1).setNumberFormat('@STRING@');
+  if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
   }
 
   // ── Sort by วันจอง (col H, index 7) ascending ──
   if (lastRow>2){
     var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
+    // Re-read หลัง write เพื่อให้ได้ค่าล่าสุด (รวมถึงค่าที่ just filled)
     var rows=dataRange.getValues();
     rows.sort(function(a,b){
-      var da=a[7]?new Date(a[7]):new Date('9999-12-31');
-      var db=b[7]?new Date(b[7]):new Date('9999-12-31');
-      return da-db;
+      // col H ควรเป็น string "YYYY-MM-DD" แล้ว — string comparison ทำงานถูกต้อง
+      // fallback ถ้ายังเป็น Date object หรือ ISO string
+      function toStr(v){
+        if(!v) return '9999-12-31';
+        if(v instanceof Date) return Utilities.formatDate(v,'GMT+7','yyyy-MM-dd');
+        var s=String(v);
+        // ISO Z format "2026-02-18T17:00:00.000Z" → parse + shift to Bangkok
+        if(s.indexOf('T')>-1){
+          var d=new Date(s);
+          return Utilities.formatDate(d,'GMT+7','yyyy-MM-dd');
+        }
+        return s.substring(0,10); // "2026-06-01" → ใช้ได้เลย
+      }
+      var da=toStr(a[7]), db=toStr(b[7]);
+      return da<db?-1:da>db?1:0;
     });
     dataRange.setValues(rows);
     lastRow=sh.getLastRow();
@@ -2999,7 +3015,19 @@ function exportToGitHub() {
     var sheet = ss.getSheetByName(f.sheet);
     if (!sheet) { Logger.log('exportToGitHub: sheet not found: ' + f.sheet); return; }
     var data    = sheet.getDataRange().getValues();
-    var json    = JSON.stringify(data);
+
+    // Serialize Date objects as YYYY-MM-DD (Bangkok time) instead of letting
+    // JSON.stringify() emit ISO Z strings which shift the date by -7 hours
+    var serialized = data.map(function(row) {
+      return row.map(function(cell) {
+        if (cell instanceof Date) {
+          return Utilities.formatDate(cell, 'GMT+7', 'yyyy-MM-dd');
+        }
+        return cell;
+      });
+    });
+
+    var json    = JSON.stringify(serialized);
     var encoded = Utilities.base64Encode(json, Utilities.Charset.UTF_8);
 
     var apiUrl = 'https://api.github.com/repos/' + repo + '/contents/' + f.path;
