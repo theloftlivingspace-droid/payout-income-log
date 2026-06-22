@@ -2010,7 +2010,7 @@ function applyManualRoomFixes() {
   for (var i = 0; i < data.length; i++) {
     var notesVal = (data[i][pNotes] || '').toString().trim();
     var otaVal   = (data[i][pOTA]   || '').toString().trim();
-    if (otaVal.startsWith('SCB') && notesVal.startsWith('\u21b3')) continue;  // skip sub-rows
+    // ไม่ skip sub-rows อีกต่อไป — MANUAL_ROOM_FIXES ต้องแก้ sub-rows ได้ด้วย
 
     var curRoom = (data[i][pRoom] || '').toString().trim();
     var bid   = (data[i][pBid]   || '').toString().trim();
