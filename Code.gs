@@ -54,7 +54,10 @@ const SCB_SUB_BG   = '#f1f8e9';
 // MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
 var MANUAL_ROOM_FIXES = [
-  // ── Room swap fix 2026-06-13 ──────────────────────────────────
+  // ── Room fix 2026-06-22 — batch SCB-2026-06-22-5437.10 ────────
+  // Airbnb batch: Abhishek Dokania(HMC8ZS3XRQ)=205, Miles Consengco(HMNKNA4S4S)=205
+  // sub-row ของ Miles ดึงห้อง 204 ผิด (ควรเป็น 205 Allure เหมือน batch row)
+  { conf:'HMNKNA4S4S', room:'205' },  // Miles Consengco → 205 Allure
   { conf:'BKC-seanaldcro-20260613', room:'205' },  // sean aldcroft → 205 Allure
   { conf:'ABB-maudsantoc-20260613', room:'210' },  // Maud Santocildes → 210 Radiance
   { conf:'HMQR4QJA55', room:'205' },             // Maud Santocildes → 205 Allure (Airbnb payout)
@@ -2012,16 +2015,22 @@ function applyManualRoomFixes() {
       if (!matched && fix.guest && guest && guest.toLowerCase() === fix.guest.toLowerCase()) matched = true;
       if (!matched) continue;
 
+      // ── skip logic ──────────────────────────────────────────────
+      // ONLY skip ถ้า: ไม่มี conf match (match ด้วย bid เท่านั้น) และห้องปัจจุบันถูกต้องอยู่แล้ว
+      // ถ้า conf match → แก้เสมอ (conf specific กว่า bid)
+      var matchedByConf = fix.conf && conf &&
+        (conf === fix.conf || conf.split(',').map(function(s){return s.trim();}).indexOf(fix.conf) >= 0);
       var isMultiFix = fix.room.indexOf(',') >= 0;
       var isMultiCur = curRoom.indexOf(',') >= 0;
-
-      // skip only if: current room is valid single AND fix is also single AND room is a known valid room
-      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi, OR room not in known list
       var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
       var curRoomKnown = KNOWN_ROOMS.indexOf(curRoom) >= 0;
-      if (isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
 
-      if (curRoom === fix.room) break; // already correct, no write needed
+      // ถ้าห้องถูกต้องแล้ว (เท่ากับที่ fix กำหนด) → skip
+      if (curRoom === fix.room) break;
+
+      // ถ้า match ด้วย bid เท่านั้น (ไม่มี conf) และห้องเป็น valid known room → skip
+      // (ป้องกัน bid ซ้ำกันในหลาย sub-rows แก้ผิดแถว)
+      if (!matchedByConf && isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
       paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
       data[i][pRoom] = fix.room;
       fixed++;
