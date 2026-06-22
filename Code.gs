@@ -737,6 +737,16 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var net   =parseAmt(nets[j]||'0');
     var detail=detailByConf[ref]||detailByBid[ref]||{};
     var room  =isValidRoom(detail.room)?cleanRoom(detail.room):'?';
+
+    // ── ตรวจ MANUAL_ROOM_FIXES สำหรับ sub-row ──────────────────
+    // ถ้า conf หรือ bid ตรงกับ fix → ใช้ห้องจาก fix แทนที่จะ inherit จาก detail
+    for (var fi=0; fi<MANUAL_ROOM_FIXES.length; fi++) {
+      var fx=MANUAL_ROOM_FIXES[fi];
+      var fxMatch=false;
+      if (fx.conf && ref && ref===fx.conf) fxMatch=true;
+      if (!fxMatch && fx.bid && scbBid && scbBid===fx.bid) fxMatch=true;
+      if (fxMatch && fx.room && fx.room.indexOf(',')<0) { room=fx.room; break; }
+    }
     var ci    =dateStr(detail.ci);
     var co    =dateStr(detail.co);
     var nts   =detail.nights||'';
