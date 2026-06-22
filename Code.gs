@@ -2283,6 +2283,17 @@ function matchSCBtoOTA(sheet) {
       ci:    row[C.ci-1], co:row[C.co-1],
       nights:row[C.nights-1], net:fmtAmt(row[C.net-1])
     };
+    // ── ตรวจ MANUAL_ROOM_FIXES ตั้งแต่ตอนสร้าง entry ──────────
+    // ป้องกัน wrong room วนซ้ำกลับเข้า detailByConf
+    for (var _fi=0; _fi<MANUAL_ROOM_FIXES.length; _fi++) {
+      var _fx=MANUAL_ROOM_FIXES[_fi];
+      if (_fx.conf && conf && conf===_fx.conf && _fx.room && _fx.room.indexOf(',')<0) {
+        entry.room=_fx.room; break;
+      }
+      if (_fx.bid && bid && bid===_fx.bid && _fx.room && _fx.room.indexOf(',')<0) {
+        entry.room=_fx.room; break;
+      }
+    }
     if (conf&&/^[A-Z0-9]{6,14}$/.test(conf)) detailByConf[conf]=entry;
     if (bid) detailByBid[bid]=entry;
     var gk2=normG(guestRaw);
