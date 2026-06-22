@@ -2979,6 +2979,142 @@ function fillMissingCiCoFromEmail() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// fixBookingDatesFromEmail()
+// ค้นหาอีเมล "New Reservation" / "การจองใหม่" จาก Little Hotelier
+// parse วันที่ส่งอีเมล (= วันที่แขกจองจริง) แล้ว match กับ resId ใน Sheet1
+// แก้ col H (วันจอง) ทุก row ให้ถูกต้อง
+// ═══════════════════════════════════════════════════════════════
+function fixBookingDatesFromEmail() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sh = ss.getSheetByName('Sheet1');
+  if (!sh) { Logger.log('Sheet1 not found'); return; }
+
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) { Logger.log('No data rows'); return; }
+
+  // อ่าน Sheet1 ทั้งหมด
+  var data = sh.getRange(2, 1, lastRow - 1, 8).getValues();
+  // col index (0-based): 0=room 1=guest 2=ci 3=co 4=channel 5=resId 6=note 7=bookDate
+
+  // ── Step 1: สร้าง lookup map จาก guestKey → [row indices] ──
+  // guestKey = lowercase alpha only, max 10 chars (เหมือนใน email-sync.js)
+  function guestKey(name) {
+    return (name || '').toLowerCase().replace(/[^a-z]/g, '').substring(0, 10);
+  }
+
+  // ── Step 2: ดึงอีเมลทั้งหมดจาก LH (ย้อนหลัง 6 เดือน) ──
+  var since = new Date();
+  since.setMonth(since.getMonth() - 6);
+  var sinceStr = Utilities.formatDate(since, 'GMT+7', 'yyyy/MM/dd');
+
+  var queries = [
+    'from:no-reply@app.littlehotelier.com subject:"New Reservation" after:' + sinceStr,
+    'from:no-reply@app.littlehotelier.com subject:"การจองใหม่" after:' + sinceStr,
+  ];
+
+  // emailMap: guestKey → [{date, subject, body}]
+  var emailMap = {};
+
+  queries.forEach(function(q) {
+    var threads = GmailApp.search(q, 0, 200);
+    threads.forEach(function(thread) {
+      var msgs = thread.getMessages();
+      msgs.forEach(function(msg) {
+        var body = msg.getPlainBody() || '';
+        var subject = msg.getSubject() || '';
+        var emailDate = msg.getDate(); // Date object = วันที่ส่งอีเมล = วันจองจริง
+        var dateStr = Utilities.formatDate(emailDate, 'GMT+7', 'yyyy-MM-dd');
+
+        // parse guest name จาก subject / body
+        // รูปแบบ: "Firstname Lastname booked..." หรือ "Firstname จองห้อง..."
+        var guestMatch =
+          subject.match(/^(?:New Reservation|การจองใหม่)[:\s–-]*(.+)$/i) ||
+          body.match(/([\w\u0E00-\u0E7F][\w\u0E00-\u0E7F\s,.''-]{1,50}?)\s+(?:booked|จองห้อง)/iu);
+
+        if (!guestMatch) return;
+        var name = guestMatch[1].trim();
+        var key = guestKey(name);
+        if (!key) return;
+
+        if (!emailMap[key]) emailMap[key] = [];
+        emailMap[key].push({ date: dateStr, subject: subject, name: name });
+      });
+    });
+  });
+
+  Logger.log('Email map keys: ' + Object.keys(emailMap).length);
+
+  // ── Step 3: match แต่ละ row ใน Sheet1 กับ emailMap ──
+  // ใช้ guestKey + checkIn date เป็น tiebreaker (อีเมลที่ date ใกล้ checkIn มากสุด)
+  var updated = 0;
+  var notFound = [];
+
+  // Set col H เป็น Plain text ก่อน
+  sh.getRange(2, 8, lastRow - 1, 1).setNumberFormat('@STRING@');
+
+  data.forEach(function(row, i) {
+    var guest = String(row[1] || '').trim();
+    var resId = String(row[5] || '').trim();
+    var ciRaw = row[2];
+    var ciStr = ciRaw instanceof Date
+      ? Utilities.formatDate(ciRaw, 'GMT+7', 'yyyy-MM-dd')
+      : String(ciRaw || '').substring(0, 10);
+
+    var key = guestKey(guest);
+    var candidates = emailMap[key] || [];
+
+    if (candidates.length === 0) {
+      notFound.push(resId + ' (' + guest + ')');
+      return;
+    }
+
+    // เลือก email ที่ date ก่อนหรือตรงกับ checkIn มากสุด (วันจองต้องไม่หลัง checkIn)
+    var best = null;
+    var bestDiff = Infinity;
+    candidates.forEach(function(c) {
+      var diff = (new Date(ciStr) - new Date(c.date)) / 86400000; // days
+      if (diff >= 0 && diff < bestDiff) {
+        bestDiff = diff;
+        best = c;
+      }
+    });
+
+    // fallback: ถ้าไม่มีที่ก่อน checkIn ให้ใช้ที่ใกล้สุด
+    if (!best && candidates.length > 0) {
+      candidates.forEach(function(c) {
+        var diff = Math.abs((new Date(ciStr) - new Date(c.date)) / 86400000);
+        if (diff < bestDiff) { bestDiff = diff; best = c; }
+      });
+    }
+
+    if (best) {
+      sh.getRange(i + 2, 8).setValue(best.date);
+      updated++;
+      Logger.log('✅ ' + resId + ' | ' + guest + ' | ci=' + ciStr + ' → bookDate=' + best.date);
+    }
+  });
+
+  Logger.log('Updated: ' + updated + ' rows');
+  Logger.log('Not found (' + notFound.length + '): ' + notFound.join(', '));
+
+  // ── Step 4: Sort Sheet1 by col H ascending ──
+  if (lastRow > 2) {
+    var dataRange = sh.getRange(2, 1, lastRow - 1, 8);
+    var rows = dataRange.getValues();
+    rows.sort(function(a, b) {
+      var da = String(a[7] || '9999-12-31').substring(0, 10);
+      var db = String(b[7] || '9999-12-31').substring(0, 10);
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
+    dataRange.setValues(rows);
+  }
+
+  SpreadsheetApp.flush();
+  Logger.log('fixBookingDatesFromEmail: done');
+}
+
+
+// ═══════════════════════════════════════════════════════════════
 // GITHUB EXPORT
 // ═══════════════════════════════════════════════════════════════
 function exportToGitHub() {
