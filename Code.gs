@@ -54,10 +54,6 @@ const SCB_SUB_BG   = '#f1f8e9';
 // MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
 var MANUAL_ROOM_FIXES = [
-  // ── Room fix 2026-06-22 — batch SCB-2026-06-22-5437.10 ────────
-  // Airbnb batch: Abhishek Dokania(HMC8ZS3XRQ)=205, Miles Consengco(HMNKNA4S4S)=205
-  // sub-row ของ Miles ดึงห้อง 204 ผิด (ควรเป็น 205 Allure เหมือน batch row)
-  { conf:'HMNKNA4S4S', room:'205' },  // Miles Consengco → 205 Allure
   { conf:'BKC-seanaldcro-20260613', room:'205' },  // sean aldcroft → 205 Allure
   { conf:'ABB-maudsantoc-20260613', room:'210' },  // Maud Santocildes → 210 Radiance
   { conf:'HMQR4QJA55', room:'205' },             // Maud Santocildes → 205 Allure (Airbnb payout)
@@ -3038,5 +3034,4 @@ function parseDate_(v) {
   var d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
-
 
