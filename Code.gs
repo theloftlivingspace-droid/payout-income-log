@@ -2239,41 +2239,23 @@ function styleSheet1(){
     lastRow=sh.getLastRow();
   }
 
-  // ── Fill/normalize col H (วันจอง) จาก ResId ──
-  // เงื่อนไข needsFix ครอบคลุม 2 กรณี: (1) ว่างเปล่า (2) เป็น raw Date object
-  // ที่ยังไม่ถูก normalize เป็น YYYY-MM-DD string (ของเก่าก่อน fix นี้)
+  // ── Normalize col H (วันจอง): แปลง raw Date object → YYYY-MM-DD string ──
+  // ไม่ทับ col H ที่เป็น YYYY-MM-DD string อยู่แล้ว (วันจองจริงจาก addPendingRow)
+  // ไม่ใช้ resId suffix อีกต่อไป (suffix = checkIn ไม่ใช่วันจอง)
   var lastRow=sh.getLastRow(), lastCol=8;
   if (lastRow>1){
+    sh.getRange(2,8,lastRow-1,1).setNumberFormat('@STRING@');
     var allData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
-    var resIdCol=5, bookingDateCol=7; // 0-indexed
+    var bookingDateCol=7;
     var updated=false;
-    allData.forEach(function(row,i){
+    allData.forEach(function(row){
       var cur=row[bookingDateCol];
-      var needsFix = !cur || (cur instanceof Date);
-      if (needsFix){
-        var resId=(row[resIdCol]||'').toString().trim();
-        // ResId format: XXX-yyyyname-YYYYMMDD หรือ XXX-CONFCODE
-        var m=resId.match(/(\d{8})$/);
-        if(m){
-          // มี date suffix ปกติ: ABB-luisens-20260630
-          var d=m[1];
-          row[bookingDateCol]=d.substring(0,4)+'-'+d.substring(4,6)+'-'+d.substring(6,8);
-          updated=true;
-        } else if(resId.match(/^ABB-[A-Z0-9]{8,12}(-\d{8})?$/)){
-          // Mycondo conf code ไม่มี date → ใช้ check-in (col C, index 2) แทน
-          var ciRaw=row[2];
-          var ciDate = (ciRaw instanceof Date) ? ciRaw : (ciRaw ? new Date(ciRaw) : null);
-          if(ciDate && !isNaN(ciDate.getTime())){
-            row[bookingDateCol]=Utilities.formatDate(ciDate, 'GMT+7', 'yyyy-MM-dd');
-            updated=true;
-          }
-        }
+      if(cur instanceof Date){
+        row[bookingDateCol]=Utilities.formatDate(cur,'GMT+7','yyyy-MM-dd');
+        updated=true;
       }
     });
-  // ── Set col H (วันจอง) เป็น Plain text ก่อน write ──
-  // ป้องกัน Sheets auto-convert "2026-06-01" string กลับเป็น Date object
-  if(lastRow>1) sh.getRange(2,8,lastRow-1,1).setNumberFormat('@STRING@');
-  if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
+    if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
   }
 
   // ── Sort by วันจอง (col H, index 7) ascending ──
