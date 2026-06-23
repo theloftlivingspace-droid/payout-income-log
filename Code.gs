@@ -809,6 +809,7 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
         if (!ci) ci=s1e.ci;
         if (!co) co=s1e.co;
         if (!nts) nts=s1e.nights||nightsBetween(ci,co);
+        if (room==='?'&&s1e.room&&isValidRoom(s1e.room)) room=cleanRoom(s1e.room);
       }
     }
     if (nts) { try { totalNights+=parseInt(nts); } catch(e){} }
@@ -847,7 +848,7 @@ function dateStr(v) {
   return v.toString().substring(0,10);
 }
 
-// ✅ NEW: Sheet1 ci/co fallback map
+// ✅ NEW: Sheet1 ci/co/room fallback map
 function getSheet1CiCoMap() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var s1 = ss.getSheets()[0];
@@ -857,12 +858,17 @@ function getSheet1CiCoMap() {
   var cG  = h.indexOf('ชื่อแขก');
   var cCI = h.indexOf('เช็คอิน');
   var cCO = h.indexOf('เช็คเอาท์');
+  var cR  = h.indexOf('เลขห้อง');
   for (var i = 1; i < data.length; i++) {
     var g  = normG((data[i][cG]  || '').toString());
     var ci = dateStr(data[i][cCI]);
     var co = dateStr(data[i][cCO]);
+    var rm = cR >= 0 ? (data[i][cR] || '').toString().trim() : '';
+    // ดึงเฉพาะตัวเลขห้องจากหน้า เช่น "103 Elegance" → "103"
+    var rmNum = rm.match(/^(\d+)/);
     if (g && ci && co) {
-      map[g] = { ci: ci, co: co, nights: nightsBetween(ci, co) };
+      map[g] = { ci: ci, co: co, nights: nightsBetween(ci, co),
+                 room: rmNum ? rmNum[1] : '' };
     }
   }
   return map;
