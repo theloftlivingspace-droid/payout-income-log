@@ -921,22 +921,42 @@ function matchRoomFromSheet1() {
 
     if (ota.startsWith('SCB')) {
       var curRoomSCB=(pr[pR]||'').toString().trim();
-      if (isValidRoom(curRoomSCB)) continue;
-      var guestForLookup='';
+      var notes=(pr[pNotes]||'').toString().trim();
+
       if (notes.startsWith('↳')) {
+        // sub-row: parse guest from "↳ Guest Name(conf) NET ..."
+        if (isValidRoom(curRoomSCB)) continue;
         var subM=notes.match(/↳\s*([^(]+)\(/);
-        guestForLookup=subM?subM[1].trim():'';
+        var guestForLookup=subM?subM[1].trim():'';
+        if (!guestForLookup) continue;
+        var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
+        var foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
+        if (foundSCB) {
+          paySheet.getRange(i+1,pR+1).setValue(foundSCB.toString().replace(/\.0$/,''));
+          payData[i][pR]=foundSCB;
+          updated++;
+        }
       } else if (notes.indexOf('✅')===0) {
-        var totM=notes.match(/✅[^|]+\|\s*([^(]+)\(/);
-        guestForLookup=totM?totM[1].trim():'';
-      }
-      if (!guestForLookup) continue;
-      var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
-      var foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
-      if (foundSCB) {
-        paySheet.getRange(i+1,pR+1).setValue(foundSCB.toString().replace(/\.0$/,''));
-        payData[i][pR]=foundSCB;
-        updated++;
+        // total row: parse ALL guests from note pattern "Guest(conf) NET ฿..."
+        // แล้ว fill ห้องรวมให้ total row ตรงๆ เพื่อให้ syncSCBTotalRooms ทำงานถูกต้อง
+        var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,12}\)\s*NET/g)||[];
+        if (guestMatches.length===0) continue;
+        var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
+        var allRooms=[], seen={};
+        guestMatches.forEach(function(gm){
+          var gName=(gm.match(/^([^(]+)/)||[])[1];
+          if (!gName) return;
+          gName=gName.trim();
+          var r=findRoom(gName,ciSCB,byGuestAll);
+          if (r && !seen[r]) { seen[r]=true; allRooms.push(r.toString().replace(/\.0$/,'')); }
+        });
+        if (allRooms.length===0) continue;
+        var roomStr=allRooms.join(', ');
+        if (roomStr!==curRoomSCB) {
+          paySheet.getRange(i+1,pR+1).setValue(roomStr);
+          payData[i][pR]=roomStr;
+          updated++;
+        }
       }
       continue;
     }
