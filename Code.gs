@@ -831,7 +831,7 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
 
   var totalRow=makeRow(scbOTA,scbDate,scbBid,allConfs.filter(Boolean).join(', '),
     allGuests.join(', '), uniqueRooms.length>0?uniqueRooms.join(', '):'',
-    '','','',
+    ciStr,coStr,nStr,
     scbAmt,'',scbAmt,'✅ Matched - '+payType,totalNote);
   totalRow._isTotal=true; totalRow._isSingle=false;
   rows.push(totalRow);
