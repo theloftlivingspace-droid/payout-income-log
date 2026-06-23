@@ -3074,18 +3074,13 @@ function fixBookingDatesFromEmail() {
         // ── parse guest name + checkIn จาก body ──
         var guest = '', checkIn = '';
 
-        // LH email format (actual): "FIRSTNAME LASTNAME booked the ... for 22nd June to 29th June on Trip.com"
+        // วันจอง = วันที่รับอีเมล New Reservation (msg.getDate())
+        // ไม่ต้อง parse checkIn จาก body เลย
         var bookedM = body.match(
-          /([A-Z\u00C0-\u024F][^\n]+?)\s+booked the\s.+?\sfor\s(\d+)(?:st|nd|rd|th)\s([A-Za-z]+)(?:\s+(\d{4}))?\s+to/i
+          /([A-Z\u00C0-\u024F][^\n]+?)\s+booked the\s/i
         );
         if (bookedM) {
           guest = bookedM[1].trim();
-          var MONS = {january:1,february:2,march:3,april:4,may:5,june:6,
-                      july:7,august:8,september:9,october:10,november:11,december:12};
-          var mo = MONS[(bookedM[3]||'').toLowerCase()];
-          var yr = bookedM[4] ? parseInt(bookedM[4]) : new Date().getFullYear();
-          var dy = parseInt(bookedM[2]);
-          if (mo) checkIn = yr+'-'+(mo<10?'0'+mo:String(mo))+'-'+(dy<10?'0'+dy:String(dy));
         }
 
         if (!guest || guest.length < 2) return;
@@ -3103,24 +3098,22 @@ function fixBookingDatesFromEmail() {
   var updated = 0, notFound = [];
 
   data.forEach(function(row, i) {
-    var guest   = String(row[1] || '').trim();
-    var resId   = String(row[5] || '').trim();
-    var ciStr   = toYMD(row[2]);
-    var key     = gKey(guest);
+    var guest = String(row[1] || '').trim();
+    var resId = String(row[5] || '').trim();
+    var ciStr = toYMD(row[2]);
+    var key   = gKey(guest);
     var candidates = emailMap[key] || [];
 
     if (candidates.length === 0) { notFound.push(resId + '(' + guest + ')'); return; }
 
-    // เลือก candidate ที่ checkIn ตรงกัน (ถ้ามี) หรือ bookDate ก่อน checkIn มากสุด
+    // เลือก email ที่ bookDate ก่อนหรือตรงกับ checkIn และใกล้ checkIn มากสุด
+    // (แขกจองก่อนเข้าพักเสมอ — ใช้ bookDate = วันรับ email เป็นวันจองจริง)
     var best = null, bestDiff = Infinity;
     candidates.forEach(function(c) {
-      // ถ้า checkIn ตรงกันเลย — เลือกทันที
-      if (c.checkIn && c.checkIn === ciStr) { best = c; bestDiff = -1; return; }
-      if (bestDiff === -1) return;
-      var diff = (new Date(ciStr) - new Date(c.bookDate)) / 86400000;
+      var diff = (new Date(ciStr) - new Date(c.bookDate)) / 86400000; // days before checkIn
       if (diff >= 0 && diff < bestDiff) { bestDiff = diff; best = c; }
     });
-    // fallback: closest regardless of sign
+    // fallback: ถ้าไม่มีที่ก่อน checkIn (late booking / same day) ใช้ที่ใกล้สุด
     if (!best) {
       candidates.forEach(function(c) {
         var diff = Math.abs((new Date(ciStr) - new Date(c.bookDate)) / 86400000);
@@ -3131,7 +3124,7 @@ function fixBookingDatesFromEmail() {
     if (best) {
       sh.getRange(i + 2, 8).setValue(best.bookDate);
       updated++;
-      Logger.log('✅ ' + resId + ' | ' + guest + ' ci=' + ciStr + ' → ' + best.bookDate);
+      Logger.log('✅ ' + resId + ' | ' + guest + ' → bookDate=' + best.bookDate);
     } else {
       notFound.push(resId + '(' + guest + ')');
     }
