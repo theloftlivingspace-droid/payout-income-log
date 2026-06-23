@@ -1530,6 +1530,23 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ ok: true, action: 'styleSheet1' }))
         .setMimeType(ContentService.MimeType.JSON);
     }
+    if (action === 'debugLHEmail') {
+      // ดึง body ของ LH email 3 ฉบับล่าสุด ส่งกลับเป็น JSON
+      var since = new Date();
+      since.setMonth(since.getMonth() - 6);
+      var sinceStr = Utilities.formatDate(since, 'GMT+7', 'yyyy/MM/dd');
+      var threads = GmailApp.search('from:no-reply@app.littlehotelier.com after:' + sinceStr, 0, 3);
+      var results = threads.map(function(thread) {
+        var msg = thread.getMessages()[0];
+        return {
+          subject: msg.getSubject(),
+          date: Utilities.formatDate(msg.getDate(), 'GMT+7', 'yyyy-MM-dd'),
+          body: (msg.getPlainBody() || '').substring(0, 2000)
+        };
+      });
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, emails: results }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'unknown action: ' + action }))
       .setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
@@ -2984,21 +3001,24 @@ function fillMissingCiCoFromEmail() {
 // match กับ row ใน Sheet1 ด้วย guestKey + checkIn date
 // bulk-update col H (วันจอง) ให้เป็นวันที่รับอีเมล = วันจองจริง
 // ═══════════════════════════════════════════════════════════════
-// ─── debug: dump body ของ LH email 1 ฉบับเพื่อดู format จริง ───
+// ─── debug: dump body ของ LH email เพื่อดู format จริง ───
+// ⚠️ อ่านอีเมลเท่านั้น ไม่เรียก parseLHEmail ไม่ส่ง LINE ทุกกรณี
 function debugLHEmailBody() {
   var since = new Date();
   since.setMonth(since.getMonth() - 6);
   var sinceStr = Utilities.formatDate(since, 'GMT+7', 'yyyy/MM/dd');
-  var threads = GmailApp.search('from:no-reply@app.littlehotelier.com after:' + sinceStr, 0, 5);
+  // ค้นเฉพาะ LH new reservation — ไม่ใช้ fn ใดๆ ที่ส่ง LINE
+  var threads = GmailApp.search(
+    'from:no-reply@app.littlehotelier.com after:' + sinceStr, 0, 3
+  );
   threads.forEach(function(thread, ti) {
-    var msgs = thread.getMessages();
-    var msg = msgs[0];
-    Logger.log('=== EMAIL ' + (ti+1) + ' ===');
-    Logger.log('Subject: ' + msg.getSubject());
-    Logger.log('Date: ' + msg.getDate());
-    Logger.log('--- BODY (first 1500 chars) ---');
-    Logger.log((msg.getPlainBody() || '').substring(0, 1500));
-    Logger.log('--- END ---');
+    var msg = thread.getMessages()[0];
+    Logger.log('=== #' + (ti+1) + ' subject: ' + msg.getSubject());
+    Logger.log('date: ' + Utilities.formatDate(msg.getDate(),'GMT+7','yyyy-MM-dd'));
+    // plain body เท่านั้น — ไม่เรียก function อื่น
+    var body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g,'');
+    Logger.log(body.substring(0, 2000));
+    Logger.log('=== END #' + (ti+1) + ' ===');
   });
 }
 
