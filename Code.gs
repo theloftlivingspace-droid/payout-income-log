@@ -3074,44 +3074,18 @@ function fixBookingDatesFromEmail() {
         // ── parse guest name + checkIn จาก body ──
         var guest = '', checkIn = '';
 
-        // LH format: "Guest:\n[name]" หรือ "for [Name], Arriving"
-        var lines = body.split('\n');
-        for (var i = 0; i < lines.length; i++) {
-          if (/^Guest:\s*$/.test(lines[i].trim())) {
-            guest = (lines[i+1] || '').trim().replace(/\s+(Age:|Guest Count:).*$/i, '').trim();
-            break;
-          }
-        }
-        if (!guest) {
-          var sm = subj.match(/for\s+([A-Z][^,]+,[^,]+),\s*Arriving/i);
-          if (sm) guest = sm[1].trim();
-        }
-        // Airbnb format: email body has guest name
-        if (!guest) {
-          var am = body.match(/(?:guest|แขก)[^\n]{0,20}:\s*([A-Z][^\n]{2,40})/i);
-          if (am) guest = am[1].trim();
-        }
-        // fallback: parse "booked" / "จองห้อง" pattern
-        if (!guest) {
-          var bm = body.match(/([\w\u0E00-\u0E7F][\w\u0E00-\u0E7F\s,.''-]{1,50}?)\s+(?:booked|จองห้อง)/i);
-          if (bm) guest = bm[1].trim();
-        }
-
-        // parse checkIn จาก LH body
-        var ciMatch = body.match(/Check[- ]?[Ii]n\s*Date[:\s]*\n?(\d{2}-[A-Za-z]+-\d{4})/);
-        if (ciMatch) checkIn = lhDateToISO(ciMatch[1]);
-        if (!checkIn) {
-          // LH Thai format
-          var ciTh = body.match(/วันเช็คอิน[:\s]*\n?(\d{2}-[A-Za-z]+-\d{4})/);
-          if (ciTh) checkIn = lhDateToISO(ciTh[1]);
-        }
-        // Airbnb: "Check-in: Jun 20, 2026"
-        if (!checkIn) {
-          var ciAbb = body.match(/Check-?in[:\s]+([A-Z][a-z]+ \d+, \d{4})/);
-          if (ciAbb) {
-            var d = new Date(ciAbb[1]);
-            if (!isNaN(d)) checkIn = Utilities.formatDate(d, 'GMT+7', 'yyyy-MM-dd');
-          }
+        // LH email format (actual): "FIRSTNAME LASTNAME booked the ... for 22nd June to 29th June on Trip.com"
+        var bookedM = body.match(
+          /([A-Z\u00C0-\u024F][^\n]+?)\s+booked the\s.+?\sfor\s(\d+)(?:st|nd|rd|th)\s([A-Za-z]+)(?:\s+(\d{4}))?\s+to/i
+        );
+        if (bookedM) {
+          guest = bookedM[1].trim();
+          var MONS = {january:1,february:2,march:3,april:4,may:5,june:6,
+                      july:7,august:8,september:9,october:10,november:11,december:12};
+          var mo = MONS[(bookedM[3]||'').toLowerCase()];
+          var yr = bookedM[4] ? parseInt(bookedM[4]) : new Date().getFullYear();
+          var dy = parseInt(bookedM[2]);
+          if (mo) checkIn = yr+'-'+(mo<10?'0'+mo:String(mo))+'-'+(dy<10?'0'+dy:String(dy));
         }
 
         if (!guest || guest.length < 2) return;
