@@ -2225,193 +2225,171 @@ function styleSheet1(){
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
 
-  // ── Deduplicate: ลบ "รอยืนยัน" rows ที่ conf code ซ้ำกับ row ที่มีห้องจริงแล้ว ──
-  // เกิดจาก email-sync สร้าง row ซ้ำทุกครั้งที่ sync (bug ที่แก้แล้วใน email-sync.js)
-  // แต่ของเก่าที่ค้างอยู่ใน sheet ต้องลบด้วย logic นี้
+  var lastRow, lastCol=8;
+
+  // ── Step 1: Deduplicate "รอยืนยัน" rows ที่ conf ซ้ำกับ row ที่มีห้องจริงแล้ว ──
+  lastRow=sh.getLastRow();
   if (lastRow>1){
     var dupData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
-    // สร้าง set ของ base conf code ที่มีห้องจริงแล้ว (col A ไม่ใช่ "รอยืนยัน")
     var realConfs={};
     dupData.forEach(function(row){
       var room=String(row[0]||'').trim();
       var resId=String(row[5]||'').trim();
       if(room && room!=='รอยืนยัน'){
-        // extract base conf: ABB-HMRKPSAX9F-20260621 → ABB-HMRKPSAX9F
-        var base=resId.replace(/-\d{8}$/, '');
-        realConfs[base]=true;
+        realConfs[resId.replace(/-\d{8}$/,'')]=true;
       }
     });
-    // หา row index ที่ต้องลบ (รอยืนยัน + conf base ซ้ำ) — ลบจากท้ายขึ้นบน
     var toDelete=[];
     dupData.forEach(function(row,i){
-      var room=String(row[0]||'').trim();
-      if(room==='รอยืนยัน'){
-        var resId=String(row[5]||'').trim();
-        var base=resId.replace(/-\d{8}$/, '');
-        if(realConfs[base]) toDelete.push(i+2); // +2: 1-indexed + header row
+      if(String(row[0]||'').trim()==='รอยืนยัน'){
+        var base=String(row[5]||'').trim().replace(/-\d{8}$/,'');
+        if(realConfs[base]) toDelete.push(i+2);
       }
     });
     toDelete.sort(function(a,b){return b-a;});
-    toDelete.forEach(function(r){ sh.deleteRow(r); });
-    lastRow=sh.getLastRow();
+    toDelete.forEach(function(r){sh.deleteRow(r);});
   }
 
-  // ── Normalize col H (วันจอง): แปลง raw Date object → YYYY-MM-DD string ──
-  // ไม่ทับ col H ที่เป็น YYYY-MM-DD string อยู่แล้ว (วันจองจริงจาก addPendingRow)
-  // ไม่ใช้ resId suffix อีกต่อไป (suffix = checkIn ไม่ใช่วันจอง)
-  var lastRow=sh.getLastRow(), lastCol=8;
+  // ── Step 2: Normalize col H → YYYY-MM-DD string (ไม่ทับถ้ามีอยู่แล้ว) ──
+  lastRow=sh.getLastRow();
   if (lastRow>1){
     sh.getRange(2,8,lastRow-1,1).setNumberFormat('@STRING@');
     var allData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
-    var bookingDateCol=7;
-    var updated=false;
+    var changed=false;
     allData.forEach(function(row){
-      var cur=row[bookingDateCol];
+      var cur=row[7];
       if(cur instanceof Date){
-        row[bookingDateCol]=Utilities.formatDate(cur,'GMT+7','yyyy-MM-dd');
-        updated=true;
+        row[7]=Utilities.formatDate(cur,'GMT+7','yyyy-MM-dd');
+        changed=true;
       }
     });
-    if(updated) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
+    if(changed) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
   }
 
-  // ── Sort by วันจอง (col H, index 7) ascending ──
+  // ── Step 3: Sort by col H (วันจอง) ascending ──
+  lastRow=sh.getLastRow();
   if (lastRow>2){
-    var dataRange=sh.getRange(2,1,lastRow-1,lastCol);
-    // Re-read หลัง write เพื่อให้ได้ค่าล่าสุด (รวมถึงค่าที่ just filled)
-    var rows=dataRange.getValues();
-    rows.sort(function(a,b){
-      // col H ควรเป็น string "YYYY-MM-DD" แล้ว — string comparison ทำงานถูกต้อง
-      // fallback ถ้ายังเป็น Date object หรือ ISO string
-      function toStr(v){
+    var dr=sh.getRange(2,1,lastRow-1,lastCol);
+    var srows=dr.getValues();
+    srows.sort(function(a,b){
+      function norm(v){
         if(!v) return '9999-12-31';
         if(v instanceof Date) return Utilities.formatDate(v,'GMT+7','yyyy-MM-dd');
         var s=String(v);
-        // ISO Z format "2026-02-18T17:00:00.000Z" → parse + shift to Bangkok
-        if(s.indexOf('T')>-1){
-          var d=new Date(s);
-          return Utilities.formatDate(d,'GMT+7','yyyy-MM-dd');
-        }
-        return s.substring(0,10); // "2026-06-01" → ใช้ได้เลย
+        return s.indexOf('T')>-1 ? Utilities.formatDate(new Date(s),'GMT+7','yyyy-MM-dd') : s.substring(0,10);
       }
-      var da=toStr(a[7]), db=toStr(b[7]);
+      var da=norm(a[7]),db=norm(b[7]);
       return da<db?-1:da>db?1:0;
     });
-    dataRange.setValues(rows);
-    lastRow=sh.getLastRow();
+    dr.setValues(srows);
   }
 
+  // ── Step 4: Apply formatting — อ่านข้อมูลใหม่หลัง sort เสร็จแล้ว ──
+  lastRow=sh.getLastRow();
   sh.clearFormats();
-  lastRow=sh.getLastRow(); lastCol=8;
-  if (lastRow<1) return;
+  if(lastRow<1) return;
 
-  sh.setColumnWidth(1,160); sh.setColumnWidth(2,180); sh.setColumnWidth(3,110);
-  sh.setColumnWidth(4,110); sh.setColumnWidth(5,100); sh.setColumnWidth(6,220); sh.setColumnWidth(7,200); sh.setColumnWidth(8,110);
+  // column widths + header
+  sh.setColumnWidth(1,160);sh.setColumnWidth(2,180);sh.setColumnWidth(3,110);
+  sh.setColumnWidth(4,110);sh.setColumnWidth(5,100);sh.setColumnWidth(6,220);
+  sh.setColumnWidth(7,200);sh.setColumnWidth(8,110);
+  sh.getRange(1,1,1,lastCol)
+    .setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
+    .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sh.getRange(1,1,1,lastCol).setValues([['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง']]);
+  sh.setRowHeight(1,36);
+  sh.setFrozenRows(1);
 
-  var header=sh.getRange(1,1,1,lastCol);
-  header.setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
-        .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  // col H — วันจอง: center + date color
-  sh.getRange(2,8,Math.max(lastRow-1,1),1).setHorizontalAlignment('center').setFontColor('#666666').setFontSize(9);
-  sh.setRowHeight(1,36); sh.setFrozenRows(1);
-
-  // base alternating rows
-  for (var r=2;r<=lastRow;r++){
-    sh.getRange(r,1,1,lastCol)
-      .setBackground(r%2===0?'#f8f9fa':'#ffffff')
-      .setFontColor('#333333').setFontSize(10).setVerticalAlignment('middle');
-    sh.setRowHeight(r,26);
-  }
-
-  // room number → type map
-  var ROOM_TYPE_MAP = {
+  var ROOM_TYPE_MAP={
     '103':'elegance','108':'retro','113':'legacy',
     '203':'allure','204':'elegance','205':'allure',
-    '209':'radiance','210':'radiance','214':'legacy','300':'luxury',
-    '363':'mycondo'
+    '209':'radiance','210':'radiance','214':'legacy','300':'luxury','363':'mycondo'
   };
-
   var ROOM_COLORS={
-    'luxury'   :{bg:'#fff3cd',font:'#856404'},
-    'retro'    :{bg:'#d1ecf1',font:'#0c5460'},
-    'elegance' :{bg:'#d4edda',font:'#155724'},
-    'allure'   :{bg:'#e2d9f3',font:'#4a235a'},
-    'legacy'   :{bg:'#fde8d8',font:'#7d3c0a'},
-    'radiance' :{bg:'#d0f0fc',font:'#0a4d6e'},
-    'mycondo'  :{bg:'#e8e0d4',font:'#5a4a32'},
-    'cancel'   :{bg:'#f8d7da',font:'#721c24'},
-    'ยกเลิก'   :{bg:'#f8d7da',font:'#721c24'},
-    'no show'  :{bg:'#ffeeba',font:'#856404'},
-    'รอยืนยัน' :{bg:'#e2e3e5',font:'#383d41'}
+    'luxury'  :{bg:'#fff3cd',font:'#856404'},
+    'retro'   :{bg:'#d1ecf1',font:'#0c5460'},
+    'elegance':{bg:'#d4edda',font:'#155724'},
+    'allure'  :{bg:'#e2d9f3',font:'#4a235a'},
+    'legacy'  :{bg:'#fde8d8',font:'#7d3c0a'},
+    'radiance':{bg:'#d0f0fc',font:'#0a4d6e'},
+    'mycondo' :{bg:'#e8e0d4',font:'#5a4a32'},
+    'cancel'  :{bg:'#f8d7da',font:'#721c24'},
+    'ยกเลิก'  :{bg:'#f8d7da',font:'#721c24'},
+    'no show' :{bg:'#ffeeba',font:'#856404'},
+    'รอยืนยัน':{bg:'#e2e3e5',font:'#383d41'}
   };
-
   var CHANNEL_COLORS={
-    'Airbnb'  :{bg:'#ff5a5f',font:'#ffffff'},
+    'airbnb'  :{bg:'#ff5a5f',font:'#ffffff'},
     'booking' :{bg:'#003580',font:'#ffffff'},
-    'Expedia' :{bg:'#ffc72c',font:'#333333'},
-    'Trip'    :{bg:'#00aaff',font:'#ffffff'},
-    'Direct'  :{bg:'#28a745',font:'#ffffff'}
+    'expedia' :{bg:'#ffc72c',font:'#333333'},
+    'trip'    :{bg:'#00aaff',font:'#ffffff'},
+    'direct'  :{bg:'#28a745',font:'#ffffff'},
+    'dbk'     :{bg:'#28a745',font:'#ffffff'}
   };
 
-  var dataVals=sh.getRange(2,1,lastRow-1,1).getValues();
-  dataVals.forEach(function(row,i){
+  // อ่านข้อมูลทั้งหมดหลัง sort — single read สำหรับ styling
+  if(lastRow<2) return;
+  var styleData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
+
+  styleData.forEach(function(row,i){
     var r=i+2;
-    var cv=(row[0]||'').toString().trim();
+    var cv=String(row[0]||'').trim();
     var cvL=cv.toLowerCase();
+    var ch=String(row[4]||'').trim();
+    var note=String(row[6]||'').trim();
     var fullRow=sh.getRange(r,1,1,lastCol);
-    var cellA=sh.getRange(r,1);
 
-    // สถานะพิเศษก่อน
-    if (cvL.indexOf('cancel')>=0||cvL.indexOf('ยกเลิก')>=0){
+    // base row
+    fullRow.setBackground(r%2===0?'#f8f9fa':'#ffffff')
+           .setFontColor('#333333').setFontSize(10).setVerticalAlignment('middle');
+    sh.setRowHeight(r,26);
+
+    // สถานะพิเศษ
+    if(cvL.indexOf('cancel')>=0||cvL.indexOf('ยกเลิก')>=0){
       fullRow.setBackground(ROOM_COLORS['cancel'].bg).setFontColor(ROOM_COLORS['cancel'].font);
-      return;
-    }
-    if (cvL.indexOf('no show')>=0){
+    } else if(cvL.indexOf('no show')>=0){
       fullRow.setBackground(ROOM_COLORS['no show'].bg).setFontColor(ROOM_COLORS['no show'].font);
-      cellA.setFontWeight('bold');
-      return;
-    }
-    if (cv==='รอยืนยัน'){
+      sh.getRange(r,1).setFontWeight('bold');
+    } else if(cv==='รอยืนยัน'){
       fullRow.setBackground(ROOM_COLORS['รอยืนยัน'].bg).setFontColor(ROOM_COLORS['รอยืนยัน'].font);
-      cellA.setFontStyle('italic');
-      return;
+      sh.getRange(r,1).setFontStyle('italic');
+    } else {
+      // สีตามเลขห้อง (col A)
+      var roomNum=cv.split(/\s+/)[0];
+      var typeName=ROOM_TYPE_MAP[roomNum];
+      if(typeName && ROOM_COLORS[typeName]){
+        sh.getRange(r,1,1,2)
+          .setBackground(ROOM_COLORS[typeName].bg)
+          .setFontColor(ROOM_COLORS[typeName].font)
+          .setFontWeight('bold');
+      }
     }
 
-    // ดึงเลขห้องจาก col A (เช่น "103 Elegance" หรือ "103")
-    var roomNum = cv.split(/\s+/)[0];
-    var typeName = ROOM_TYPE_MAP[roomNum];
-    if (typeName && ROOM_COLORS[typeName]){
-      sh.getRange(r,1,1,2).setBackground(ROOM_COLORS[typeName].bg)
-           .setFontColor(ROOM_COLORS[typeName].font)
-           .setFontWeight('bold');
-    }
-  });
-
-  // col E — Channel color
-  var chanData=sh.getRange(2,5,lastRow-1,1).getValues();
-  chanData.forEach(function(row,i){
-    var r=i+2, ch=(row[0]||'').toString().trim(), cell=sh.getRange(r,5);
-    Object.keys(CHANNEL_COLORS).forEach(function(key){
-      if (ch.toLowerCase().indexOf(key.toLowerCase())>=0)
-        cell.setBackground(CHANNEL_COLORS[key].bg).setFontColor(CHANNEL_COLORS[key].font)
-            .setFontWeight('bold').setHorizontalAlignment('center');
+    // สีตาม Channel (col E) — apply ทุก row ยกเว้น cancel/รอยืนยัน ก็โอเค
+    var chL=ch.toLowerCase();
+    var chColor=null;
+    Object.keys(CHANNEL_COLORS).forEach(function(k){
+      if(chL.indexOf(k)>=0) chColor=CHANNEL_COLORS[k];
     });
+    if(chColor){
+      sh.getRange(r,5).setBackground(chColor.bg).setFontColor(chColor.font)
+        .setFontWeight('bold').setHorizontalAlignment('center');
+    }
+
+    // Note highlight
+    if(note) sh.getRange(r,7).setBackground('#fff8e1').setFontColor('#5d4037').setFontStyle('italic');
   });
 
-  // col G — Note
-  var noteData=sh.getRange(2,7,lastRow-1,1).getValues();
-  noteData.forEach(function(row,i){
-    if ((row[0]||'').toString().trim())
-      sh.getRange(i+2,7).setBackground('#fff8e1').setFontColor('#5d4037').setFontStyle('italic');
-  });
-
+  // col H วันจอง — center + small gray
+  sh.getRange(2,8,lastRow-1,1).setHorizontalAlignment('center').setFontColor('#666666').setFontSize(9);
+  // col C-D center
   sh.getRange(2,3,lastRow-1,2).setHorizontalAlignment('center');
-  var SH=['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง'];
-  sh.getRange(1,1,1,lastCol).setValues([SH]);
+  // borders
   sh.getRange(1,1,lastRow,lastCol).setBorder(true,true,true,true,false,false,'#cccccc',SpreadsheetApp.BorderStyle.SOLID);
   sh.getRange(2,1,lastRow-1,lastCol).setBorder(false,false,false,false,false,true,'#e0e0e0',SpreadsheetApp.BorderStyle.SOLID);
+
   SpreadsheetApp.flush();
-  Logger.log('styleSheet1: เสร็จแล้ว');
+  Logger.log('styleSheet1: เสร็จแล้ว rows='+(lastRow-1));
 }
 
 // ═══════════════════════════════════════════════════════════════
