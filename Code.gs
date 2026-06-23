@@ -2984,6 +2984,24 @@ function fillMissingCiCoFromEmail() {
 // match กับ row ใน Sheet1 ด้วย guestKey + checkIn date
 // bulk-update col H (วันจอง) ให้เป็นวันที่รับอีเมล = วันจองจริง
 // ═══════════════════════════════════════════════════════════════
+// ─── debug: dump body ของ LH email 1 ฉบับเพื่อดู format จริง ───
+function debugLHEmailBody() {
+  var since = new Date();
+  since.setMonth(since.getMonth() - 6);
+  var sinceStr = Utilities.formatDate(since, 'GMT+7', 'yyyy/MM/dd');
+  var threads = GmailApp.search('from:no-reply@app.littlehotelier.com after:' + sinceStr, 0, 5);
+  threads.forEach(function(thread, ti) {
+    var msgs = thread.getMessages();
+    var msg = msgs[0];
+    Logger.log('=== EMAIL ' + (ti+1) + ' ===');
+    Logger.log('Subject: ' + msg.getSubject());
+    Logger.log('Date: ' + msg.getDate());
+    Logger.log('--- BODY (first 1500 chars) ---');
+    Logger.log((msg.getPlainBody() || '').substring(0, 1500));
+    Logger.log('--- END ---');
+  });
+}
+
 function fixBookingDatesFromEmail() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sh = ss.getSheetByName('Sheet1');
