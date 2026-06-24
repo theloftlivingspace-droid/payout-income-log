@@ -302,8 +302,12 @@ function buildInvoiceMatchKeys(inv, bkNamePrefixes) {
   });
 
   // 2. checkin + room
+  // For split invoices from multi-room batches, inv.checkin may be the merged row's
+  // earliest date (not the actual guest checkin). Also add inv.checkout as a cr: key
+  // because in Airbnb batch payouts the merged row checkout = next guest's checkin.
   var roomNum = extractRoomNum(inv.room);
-  if (roomNum && inv.checkin) keys.push('cr:' + inv.checkin + ':' + roomNum);
+  if (roomNum && inv.checkin)  keys.push('cr:' + inv.checkin  + ':' + roomNum);
+  if (roomNum && inv.checkout) keys.push('cr:' + inv.checkout + ':' + roomNum);
 
   // 3. name prefixes
   var pxs = namePrefixes(inv.guest);
