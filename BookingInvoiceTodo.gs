@@ -12,14 +12,7 @@ const SHEET1_TAB   = 'Sheet1';
 const LEDGER_TAB   = 'Bank_Ledger';
 const TODO_TAB     = 'BookingTodo';   // sheet เก็บ done state (สร้างอัตโนมัติถ้าไม่มี)
 
-// ── doGet ──────────────────────────────────────────────────────────────
-function doGet(e) {
-  var p   = (e && e.parameter) ? e.parameter : {};
-  var out = handleRequest(p);
-  return ContentService
-    .createTextOutput(JSON.stringify(out))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+// doGet is defined in Code.gs and delegates ?action= requests to handleRequest() below.
 
 function handleRequest(p) {
   var action = p.action || '';
