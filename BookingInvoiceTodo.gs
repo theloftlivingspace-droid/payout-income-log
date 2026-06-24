@@ -125,7 +125,8 @@ function readInvoices(ss, today) {
     var confSingle = String(r0[3] || '').trim();
     if (confSingle && confSingle.indexOf(',') < 0) {
       var ci0 = normDate(r0[6]), co0 = normDate(r0[7]);
-      if (ci0 && co0) ciCoByConf[confSingle] = { checkin: ci0, checkout: co0 };
+      var net0 = parseFloat(String(r0[11]).replace(/,/g,'')) || 0;
+      if (ci0 && co0) ciCoByConf[confSingle] = { checkin: ci0, checkout: co0, net: net0 };
     }
   }
 
@@ -166,6 +167,8 @@ function readInvoices(ss, today) {
         var iKey = bid + ':' + j;
         var jConf = confList[j];
         var jCiCo = (jConf && ciCoByConf[jConf]) || null;
+        // net ย่อย: ดึงจาก ciCoByConf ถ้ามี (เก็บไว้ตอน PASS 1) ไม่งั้นใช้ merged net
+        var jNet = (jCiCo && jCiCo.net) ? jCiCo.net : net;
         result.push({
           invoiceKey     : iKey,
           bookingId      : bid,
@@ -174,7 +177,7 @@ function readInvoices(ss, today) {
           checkin        : jCiCo ? jCiCo.checkin  : checkin,
           checkout       : jCiCo ? jCiCo.checkout : checkout,
           nights         : nights,
-          net            : net,
+          net            : jNet,
           groupNet       : gross,
           isSplitFromMulti: true,
           splitIndex     : j + 1,
@@ -184,7 +187,7 @@ function readInvoices(ss, today) {
           detectedDate   : detectedRaw,
           detectedToday  : (detectedRaw === today || fs === today),
           done           : !!doneMap[iKey],
-          confList       : confList,
+          confList       : jConf ? [jConf] : [],
           matchKeys      : []
         });
       }
