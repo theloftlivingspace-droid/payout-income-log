@@ -946,19 +946,37 @@ function matchRoomFromSheet1() {
           updated++;
         }
       } else if (notes.indexOf('✅')===0) {
-        // total row: parse ALL guests from note pattern "Guest(conf) NET ฿..."
-        // แล้ว fill ห้องรวมให้ total row ตรงๆ เพื่อให้ syncSCBTotalRooms ทำงานถูกต้อง
-        var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,20}\)\s*NET/g)||[];
-        if (guestMatches.length===0) continue;
-        var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
+        // total row: รวมห้องจาก sub-rows (bid เดียวกัน, notes ขึ้นต้น ↳) ที่มีห้องถูกต้องอยู่แล้ว
+        // ไม่ใช้ findRoom() ซ้ำ เพราะชื่อสั้น/nickname อาจ match ไม่ได้
+        var pBid=pH.indexOf('Booking ID');
+        if(pBid<0) pBid=2; // fallback: column index 2
+        var totalBid=(pr[pBid]||'').toString().trim();
         var allRooms=[], seen={};
-        guestMatches.forEach(function(gm){
-          var gName=(gm.match(/^([^(]+)/)||[])[1];
-          if (!gName) return;
-          gName=gName.trim();
-          var r=findRoom(gName,ciSCB,byGuestAll);
-          if (r && !seen[r]) { seen[r]=true; allRooms.push(r.toString().replace(/\.0$/,'')); }
-        });
+        // scan ทุก sub-row ที่มี bid เดียวกัน
+        for (var k=1;k<payData.length;k++) {
+          if (k===i) continue;
+          var kRow=payData[k];
+          var kOta=(kRow[pOTA]||'').toString().trim();
+          var kNotes=(kRow[pNotes]||'').toString().trim();
+          var kBid=(kRow[pBid]||'').toString().trim();
+          if (!kOta.startsWith('SCB')) continue;
+          if (kBid!==totalBid) continue;
+          if (!kNotes.startsWith('\u21b3')) continue; // ↳ sub-rows only
+          var kRoom=(kRow[pR]||'').toString().trim();
+          if (isValidRoom(kRoom) && !seen[kRoom]) { seen[kRoom]=true; allRooms.push(kRoom); }
+        }
+        // fallback: ถ้าหา sub-rows ไม่ได้ ใช้ findRoom() เหมือนเดิม
+        if (allRooms.length===0) {
+          var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,20}\)\s*NET/g)||[];
+          var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
+          guestMatches.forEach(function(gm){
+            var gName=(gm.match(/^([^(]+)/)||[])[1];
+            if (!gName) return;
+            gName=gName.trim();
+            var r=findRoom(gName,ciSCB,byGuestAll);
+            if (r && !seen[r]) { seen[r]=true; allRooms.push(r.toString().replace(/\.0$/,'')); }
+          });
+        }
         if (allRooms.length===0) continue;
         var roomStr=allRooms.join(', ');
         if (roomStr!==curRoomSCB) {
