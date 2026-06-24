@@ -819,7 +819,7 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
 
     var subRow=makeRow(scbOTA,scbDate,scbBid,ref,
       guest,room,ci,co,nts,'','',net,'',
-      '↳ '+guest+' ('+ref+') NET ฿'+net);
+      '↳ '+guest+' ('+ref+') NET ฿'+net+' | Value Date: '+scbDate);
     subRow._isTotal=false; subRow._isSingle=false;
     rows.push(subRow);
   }
@@ -948,7 +948,7 @@ function matchRoomFromSheet1() {
       } else if (notes.indexOf('✅')===0) {
         // total row: parse ALL guests from note pattern "Guest(conf) NET ฿..."
         // แล้ว fill ห้องรวมให้ total row ตรงๆ เพื่อให้ syncSCBTotalRooms ทำงานถูกต้อง
-        var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,12}\)\s*NET/g)||[];
+        var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,20}\)\s*NET/g)||[];
         if (guestMatches.length===0) continue;
         var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
         var allRooms=[], seen={};
