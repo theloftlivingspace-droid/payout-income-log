@@ -3209,6 +3209,13 @@ function exportToGitHub() {
         if (cell instanceof Date) {
           return Utilities.formatDate(cell, 'GMT+7', 'yyyy-MM-dd');
         }
+        // แปลง string M/D/YYYY หรือ M/D/YY → YYYY-MM-DD
+        if (typeof cell === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(cell.trim())) {
+          var parts = cell.trim().split('/');
+          var m = parseInt(parts[0]), d = parseInt(parts[1]), y = parseInt(parts[2]);
+          if (y < 100) y += 2000;
+          return y + '-' + ('0'+m).slice(-2) + '-' + ('0'+d).slice(-2);
+        }
         return cell;
       });
     });
