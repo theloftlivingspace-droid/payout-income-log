@@ -1594,6 +1594,13 @@ function doGet(e){
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (p.api==='1') return getDashboardData();
+  // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
+  if (p.action) {
+    var out = handleRequest(p);
+    return ContentService
+      .createTextOutput(JSON.stringify(out))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   return doGetOriginal(e);
 }
 function doGetOriginal(e){
