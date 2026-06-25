@@ -842,10 +842,51 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
   return rows;
 }
 
+// ── normalizeSheetDate_: แปลงค่า date cell ใน Sheet1 → YYYY-MM-DD string ──
+// รองรับ: Date object, 'YYYY-MM-DD', 'D/M/YYYY', 'M/D/YYYY', 'DD-MM-YYYY', ISO timestamp
+function normalizeSheetDate_(v) {
+  if (!v) return '';
+  if (v instanceof Date) return Utilities.formatDate(v,'GMT+7','yyyy-MM-dd');
+  var s = String(v).trim();
+  if (!s) return '';
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // ISO timestamp e.g. 2026-02-19T00:00:00.000Z
+  if (s.indexOf('T') > -1) {
+    try { return Utilities.formatDate(new Date(s),'GMT+7','yyyy-MM-dd'); } catch(e) {}
+  }
+  // D/M/YYYY or DD/MM/YYYY (Thai convention)
+  var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    var dd=parseInt(slash[1],10), mm=parseInt(slash[2],10), yyyy=parseInt(slash[3],10);
+    // Disambiguate: if first number > 12 it must be day; else assume D/M/YYYY (Thai)
+    if (dd > 12) {
+      return yyyy+'-'+(mm<10?'0':'')+mm+'-'+(dd<10?'0':'')+dd;
+    } else {
+      return yyyy+'-'+(dd<10?'0':'')+dd+'-'+(mm<10?'0':'')+mm;
+    }
+  }
+  // D-M-YYYY
+  var dash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dash) {
+    var dd2=parseInt(dash[1],10), mm2=parseInt(dash[2],10), yyyy2=parseInt(dash[3],10);
+    if (dd2 > 12) {
+      return yyyy2+'-'+(mm2<10?'0':'')+mm2+'-'+(dd2<10?'0':'')+dd2;
+    } else {
+      return yyyy2+'-'+(dd2<10?'0':'')+dd2+'-'+(mm2<10?'0':'')+mm2;
+    }
+  }
+  // Fallback: take first 10 chars (handles existing YYYY-MM-DD with trailing chars)
+  return s.substring(0,10);
+}
+
 function dateStr(v) {
   if (!v) return '';
   if (v instanceof Date) return Utilities.formatDate(v,'Asia/Bangkok','yyyy-MM-dd');
-  return v.toString().substring(0,10);
+  var s = v.toString().trim();
+  // Normalize non-standard formats via same helper
+  var n = normalizeSheetDate_(v);
+  return n || s.substring(0,10);
 }
 
 // ✅ NEW: Sheet1 ci/co/room fallback map
@@ -2304,18 +2345,25 @@ function styleSheet1(){
     toDelete.forEach(function(r){sh.deleteRow(r);});
   }
 
-  // ── Step 2: Normalize col H → YYYY-MM-DD string (ไม่ทับถ้ามีอยู่แล้ว) ──
+  // ── Step 2: Normalize date columns C(เช็คอิน), D(เช็คเอาท์), H(วันจอง) → YYYY-MM-DD ──
   lastRow=sh.getLastRow();
   if (lastRow>1){
+    // Force all 3 date columns to text format so GAS won't re-interpret strings as dates
+    sh.getRange(2,3,lastRow-1,1).setNumberFormat('@STRING@');
+    sh.getRange(2,4,lastRow-1,1).setNumberFormat('@STRING@');
     sh.getRange(2,8,lastRow-1,1).setNumberFormat('@STRING@');
     var allData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
     var changed=false;
     allData.forEach(function(row){
-      var cur=row[7];
-      if(cur instanceof Date){
-        row[7]=Utilities.formatDate(cur,'GMT+7','yyyy-MM-dd');
-        changed=true;
-      }
+      // date column indices: 2=เช็คอิน, 3=เช็คเอาท์, 7=วันจอง
+      [2,3,7].forEach(function(ci){
+        var cur=row[ci];
+        var normalized=normalizeSheetDate_(cur);
+        if(normalized && normalized!==String(cur||'').trim()){
+          row[ci]=normalized;
+          changed=true;
+        }
+      });
     });
     if(changed) sh.getRange(2,1,lastRow-1,lastCol).setValues(allData);
   }
