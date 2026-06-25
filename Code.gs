@@ -139,6 +139,13 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063903', room:'300' },  // BOONTUM/PAKPONG
   { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063939', room:'204' },  // YAMKAMOL/METAWEE
   { bid:'SCB-2026-05-05-5555.03', conf:'1400825520948811', room:'108' },  // NAM/SANG WON
+  // SCB-2026-06-25-12380.35 (Trip.com withdrawal #1779538302)
+  { bid:'SCB-2026-06-25-12380.35', room:'?, ?, ?, ?, ?' },  // total — SU MYAT/AUNG + Boon/Pornpawit x2 + PATHONG/THANAPHACHARA + BUKBOON/THANAPORNPAN
+  { bid:'SCB-2026-06-25-12380.35', conf:'1578947342348802', room:'?' },  // SU MYAT/AUNG  Jun 3-12 3003.63
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928032878497', room:'?' },  // Boon/Pornpawit Jun 12-16 2054.76
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928101685164', room:'?' },  // Boon/Pornpawit Jun 16-19 2175.99
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928138476811', room:'?' },  // PATHONG/THANAPHACHARA Jun 16-20 1905.72
+  { bid:'SCB-2026-06-25-12380.35', conf:'1653714323322744', room:'?' },  // BUKBOON/THANAPORNPAN Jun 16-21 3240.25
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
@@ -1538,6 +1545,7 @@ var TRIP_MANUAL_BATCHES = [
   { scbId:'SCB-2026-03-27-1826.72',  tripIds:['1653712218028901'] },
   { scbId:'SCB-2026-04-09-2791.86',  tripIds:['1622926103974015'] },
   { scbId:'SCB-2026-05-05-5555.03',  tripIds:['1622926832063903','1622926832063939','1400825520948811'] },
+  { scbId:'SCB-2026-06-25-12380.35', tripIds:['1578947342348802','1622928032878497','1622928101685164','1622928138476811','1653714323322744'] },
 ];
 
 function manualMatchSCBtoTrip(){
