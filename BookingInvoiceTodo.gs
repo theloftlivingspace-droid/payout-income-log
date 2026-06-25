@@ -20,6 +20,7 @@ function handleRequest(p) {
   if (action === 'getData')        return buildData();
   if (action === 'setBookingDone') return setDone('booking', p.id, p.done === 'true');
   if (action === 'setInvoiceDone') return setDone('invoice', p.id, p.done === 'true');
+  if (action === 'setNote')        return setNote(p.resId, p.note || '');
 
   return { error: 'unknown action' };
 }
@@ -356,6 +357,25 @@ function fmtDate(d) {
   return y + '-' + m + '-' + dd;
 }
 
+// ── setNote: write note to Sheet1 col G for a given resId ─────────────
+function setNote(resId, note) {
+  if (!resId) return { ok: false, error: 'no resId' };
+  var ss    = SpreadsheetApp.openById(SS_ID);
+  var sheet = ss.getSheetByName(SHEET1_TAB);
+  var rows  = sheet.getDataRange().getValues();
+  var mode  = 'start';
+  for (var i = 0; i < rows.length; i++) {
+    var c0 = String(rows[i][0] || '').trim();
+    if (c0 === 'เลขห้อง') { mode = 'bookings'; continue; }
+    if (mode !== 'bookings') continue;
+    if (String(rows[i][5] || '').trim() === resId) {
+      sheet.getRange(i + 1, 7).setValue(note);   // col G = index 6 = column 7
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'resId not found' };
+}
+
 // ── Done state (stored in BookingTodo sheet) ───────────────────────────
 //
 // Sheet structure:
@@ -421,3 +441,4 @@ function setDone(type, id, done) {
   s.appendRow([type, id, done, fmtDate(new Date())]);
   return { ok: true, created: true };
 }
+
