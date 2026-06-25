@@ -140,12 +140,12 @@ var MANUAL_ROOM_FIXES = [
   { bid:'SCB-2026-05-05-5555.03', conf:'1622926832063939', room:'204' },  // YAMKAMOL/METAWEE
   { bid:'SCB-2026-05-05-5555.03', conf:'1400825520948811', room:'108' },  // NAM/SANG WON
   // SCB-2026-06-25-12380.35 (Trip.com withdrawal #1779538302)
-  { bid:'SCB-2026-06-25-12380.35', room:'?, ?, ?, ?, ?' },  // total — SU MYAT/AUNG + Boon/Pornpawit x2 + PATHONG/THANAPHACHARA + BUKBOON/THANAPORNPAN
-  { bid:'SCB-2026-06-25-12380.35', conf:'1578947342348802', room:'?' },  // SU MYAT/AUNG  Jun 3-12 3003.63
-  { bid:'SCB-2026-06-25-12380.35', conf:'1622928032878497', room:'?' },  // Boon/Pornpawit Jun 12-16 2054.76
-  { bid:'SCB-2026-06-25-12380.35', conf:'1622928101685164', room:'?' },  // Boon/Pornpawit Jun 16-19 2175.99
-  { bid:'SCB-2026-06-25-12380.35', conf:'1622928138476811', room:'?' },  // PATHONG/THANAPHACHARA Jun 16-20 1905.72
-  { bid:'SCB-2026-06-25-12380.35', conf:'1653714323322744', room:'?' },  // BUKBOON/THANAPORNPAN Jun 16-21 3240.25
+  { bid:'SCB-2026-06-25-12380.35', room:'103, 103, 103, 300, 204' },  // total — SU MYAT/AUNG(103) + Boon/Pornpawit x2(103) + PATHONG/THANAPHACHARA(300) + BUKBOON/THANAPORNPAN(204)
+  { bid:'SCB-2026-06-25-12380.35', conf:'1578947342348802', room:'103' },  // SU MYAT/AUNG  Jun 3-12 3003.63
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928032878497', room:'103' },  // Boon/Pornpawit Jun 12-16 2054.76
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928101685164', room:'103' },  // Boon/Pornpawit Jun 16-19 2175.99
+  { bid:'SCB-2026-06-25-12380.35', conf:'1622928138476811', room:'300' },  // PATHONG/THANAPHACHARA Jun 16-20 1905.72
+  { bid:'SCB-2026-06-25-12380.35', conf:'1653714323322744', room:'204' },  // BUKBOON/THANAPORNPAN Jun 16-21 3240.25
   { bid:'SCB-2026-03-02-14599.29', room:'205, 300' },  // Egor Lebedev(205)+Rica Chanel(300)
   { conf:'HMR38XW4Z3', room:'300' },  // Rica Chanel / Airbnb
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
