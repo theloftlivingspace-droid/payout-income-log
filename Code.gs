@@ -1062,6 +1062,7 @@ function matchRoomFromSheet1() {
     }
   }
   Logger.log('matchRoomFromSheet1: '+updated+' rows updated');
+  return updated;
 }
 
 function findRoom(guestRaw,ci,byGuest) {
@@ -1682,6 +1683,14 @@ function doGet(e){
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
   if (p.api==='1') return getDashboardData();
+  // Tap-to-run from a phone browser (Sheets mobile app can't run Apps Script — see below)
+  if (p.action==='runMatchRoom') {
+    var n=matchRoomFromSheet1();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ matchRoomFromSheet1() เสร็จแล้ว — อัปเดต ' + n + ' แถว</body>'
+    );
+  }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
   if (p.action) {
     var out = handleRequest(p);
