@@ -940,7 +940,7 @@ function matchRoomFromSheet1() {
   var cCI=h1.indexOf('เช็คอิน');
   if (cR<0) cR=0;
 
-  var byGuest={}, byGuestAll={};
+  var byGuest={}, byGuestAll={}, byConf={};
   for (var i=s1HR+1;i<s1Data.length;i++) {
     var row=s1Data[i];
     if (!row[cR]||!row[cG]) continue;
@@ -958,6 +958,11 @@ function matchRoomFromSheet1() {
       if (!byGuest[gk]) byGuest[gk]=[];
       byGuest[gk].push(entry);
     }
+    // resId (คอลัมน์ F ตาม readBookings ใน BookingInvoiceTodo.gs) มี conf code ฝังอยู่
+    // เช่น "ABB-HMEQD5FAY2-20260630" → match ตรง conf code แม่นกว่าเดาชื่อ/วันที่มาก
+    var resId=(row[5]||'').toString().trim();
+    var confCode=typeof extractConfFromResId==='function'?extractConfFromResId(resId):null;
+    if (confCode && !byConf[confCode]) byConf[confCode]=entry;
   }
 
   var paySheet=ss.getSheetByName(TAB_NAME);
@@ -981,13 +986,17 @@ function matchRoomFromSheet1() {
       var notes=(pr[pNotes]||'').toString().trim();
 
       if (notes.startsWith('↳')) {
-        // sub-row: parse guest from "↳ Guest Name(conf) NET ..."
+        // sub-row: parse guest + conf code from "↳ Guest Name(CONF) NET ..."
         if (isValidRoom(curRoomSCB)) continue;
-        var subM=notes.match(/↳\s*([^(]+)\(/);
+        var subM=notes.match(/↳\s*([^(]+)\(([^)]+)\)/);
         var guestForLookup=subM?subM[1].trim():'';
+        var confForLookup=subM?subM[2].trim():'';
         if (!guestForLookup) continue;
         var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
-        var foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
+        // 1) match ตรงด้วย conf code ก่อน — แม่นกว่าเดาชื่อ/วันที่มาก
+        var foundSCB=confForLookup&&byConf[confForLookup]?byConf[confForLookup].room:null;
+        // 2) ไม่เจอ conf ใน Sheet1 (ยังไม่ถูกบันทึก/ไม่ใช่ Airbnb) → fallback ไป fuzzy name match เดิม
+        if (!foundSCB) foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
         if (foundSCB) {
           paySheet.getRange(i+1,pR+1).setValue(foundSCB.toString().replace(/\.0$/,''));
           payData[i][pR]=foundSCB;
@@ -1013,15 +1022,16 @@ function matchRoomFromSheet1() {
           var kRoom=(kRow[pR]||'').toString().trim();
           if (isValidRoom(kRoom) && !seen[kRoom]) { seen[kRoom]=true; allRooms.push(kRoom); }
         }
-        // fallback: ถ้าหา sub-rows ไม่ได้ ใช้ findRoom() เหมือนเดิม
+        // fallback: ถ้าหา sub-rows ไม่ได้ ลอง match ด้วย conf code ก่อน แล้วค่อย findRoom() ตามเดิม
         if (allRooms.length===0) {
-          var guestMatches=notes.match(/([^|()]+)\([A-Z0-9]{8,20}\)\s*NET/g)||[];
+          var guestMatches=notes.match(/([^|()]+)\(([A-Z0-9]{8,20})\)\s*NET/g)||[];
           var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
           guestMatches.forEach(function(gm){
-            var gName=(gm.match(/^([^(]+)/)||[])[1];
-            if (!gName) return;
-            gName=gName.trim();
-            var r=findRoom(gName,ciSCB,byGuestAll);
+            var gm2=gm.match(/^([^(]+)\(([^)]+)\)/);
+            if (!gm2) return;
+            var gName=gm2[1].trim(), gConf=gm2[2].trim();
+            var r=gConf&&byConf[gConf]?byConf[gConf].room:null;
+            if (!r) r=findRoom(gName,ciSCB,byGuestAll);
             if (r && !seen[r]) { seen[r]=true; allRooms.push(r.toString().replace(/\.0$/,'')); }
           });
         }
@@ -1041,7 +1051,10 @@ function matchRoomFromSheet1() {
     var guestRaw=(pr[pG]||'').toString().trim();
     if (!guestRaw||/^(รอ match)$/i.test(guestRaw)) continue;
     var ci=pr[pCI]?new Date(pr[pCI]):null;
-    var found=findRoom(guestRaw,ci,byGuest);
+    var pConfCol=pH.indexOf('Conf. Code');
+    var rowConf=pConfCol>=0?(pr[pConfCol]||'').toString().trim():'';
+    var found=rowConf&&byConf[rowConf]?byConf[rowConf].room:null;
+    if (!found) found=findRoom(guestRaw,ci,byGuest);
     if (found) {
       paySheet.getRange(i+1,pR+1).setValue(found.toString().replace(/\.0$/,''));
       payData[i][pR]=found;
@@ -1064,18 +1077,25 @@ function findRoom(guestRaw,ci,byGuest) {
       var dc=cands.filter(function(c){
         return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_EXACT;
       });
-      if (dc.length) return dc[0].room;
+      // ถ้าระบุ ci มาแล้วไม่มี candidate ไหนอยู่ในช่วงวันที่เลย ห้ามเดา
+      // (เดิม fallback ไปห้องแรกของชื่อซ้ำ ทำให้ได้ห้องผิดจากการจองเก่าคนละรอบ)
+      return dc.length ? dc[0].room : null;
     }
     return cands[0].room; // ถ้าไม่มี CI → return ห้องแรก
   }
 
-  // 2. Fuzzy: แต่ละ word part score (ลด threshold เป็น 1 ถ้าชื่อ part ยาวพอ)
+  // 2. Fuzzy: แต่ละ word part ต้อง match "ทั้งคำ" กับคำใน key เท่านั้น (ลด threshold เป็น 1 ถ้าชื่อ part ยาวพอ)
+  // เดิมใช้ k.indexOf(p)>=0 ซึ่งเป็น substring match ทำให้ false-positive ง่าย
+  // (เช่น "ange" ไป match คำที่มี "ange" อยู่ข้างในโดยไม่ใช่คำเดียวกัน)
   var parts=gk.split(' ').filter(function(p){return p.length>2;});
   if (parts.length) {
     var best=null, bestScore=0;
     Object.keys(byGuest).forEach(function(k) {
+      var kWords=k.split(' ');
       var score=0;
-      parts.forEach(function(p){ if (k.indexOf(p)>=0) score+=p.length; }); // weight by length
+      parts.forEach(function(p){
+        if (kWords.indexOf(p)>=0) score+=p.length; // ต้อง match ทั้งคำ ไม่ใช่ substring
+      });
       if (score>bestScore) { bestScore=score; best=k; }
     });
     // threshold: ถ้า part ยาว ≥5 ตัวอักษร score 1 ก็พอ; ไม่งั้นต้อง ≥2 parts
@@ -1087,7 +1107,8 @@ function findRoom(guestRaw,ci,byGuest) {
         var dc=cands.filter(function(c){
           return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_FUZZY;
         });
-        if (dc.length) return dc[0].room;
+        // เช่นเดียวกับข้อ 1: มี ci แล้วไม่มี candidate ตรงช่วงวันที่ → ห้ามเดา ปล่อยให้ตกไป step 3/null
+        return dc.length ? dc[0].room : null;
       }
       return cands[0].room;
     }
