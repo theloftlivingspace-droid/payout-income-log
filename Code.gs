@@ -987,16 +987,22 @@ function matchRoomFromSheet1() {
 
       if (notes.startsWith('↳')) {
         // sub-row: parse guest + conf code from "↳ Guest Name(CONF) NET ..."
-        if (isValidRoom(curRoomSCB)) continue;
         var subM=notes.match(/↳\s*([^(]+)\(([^)]+)\)/);
         var guestForLookup=subM?subM[1].trim():'';
         var confForLookup=subM?subM[2].trim():'';
         if (!guestForLookup) continue;
         var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
-        // 1) match ตรงด้วย conf code ก่อน — แม่นกว่าเดาชื่อ/วันที่มาก
-        var foundSCB=confForLookup&&byConf[confForLookup]?byConf[confForLookup].room:null;
-        // 2) ไม่เจอ conf ใน Sheet1 (ยังไม่ถูกบันทึก/ไม่ใช่ Airbnb) → fallback ไป fuzzy name match เดิม
-        if (!foundSCB) foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
+        var confRoomSCB=confForLookup&&byConf[confForLookup]?byConf[confForLookup].room:null;
+        var foundSCB=null;
+        if (confRoomSCB) {
+          // conf code match = ความมั่นใจสูง แก้ทับค่าที่ผิดได้ทันทีแม้ห้องเดิมจะดู "valid" อยู่แล้ว
+          // (จุดนี้เองที่ทำให้ห้อง 103 ผิดค้างอยู่ เพราะเดิม skip ทุกแถวที่มีเลขห้องอยู่แล้ว ไม่ว่าจะถูกหรือผิด)
+          if (confRoomSCB!==curRoomSCB) foundSCB=confRoomSCB;
+        } else if (!isValidRoom(curRoomSCB)) {
+          // ไม่มี conf ให้เทียบ (ยังไม่เข้า Sheet1 / ไม่ใช่ Airbnb) → fuzzy fallback เฉพาะตอนห้องว่าง/ไม่ valid เท่านั้น
+          // ความมั่นใจต่ำกว่า conf code เลยห้ามทับค่าที่มีอยู่แล้ว
+          foundSCB=findRoom(guestForLookup,ciSCB,byGuestAll);
+        }
         if (foundSCB) {
           paySheet.getRange(i+1,pR+1).setValue(foundSCB.toString().replace(/\.0$/,''));
           payData[i][pR]=foundSCB;
@@ -1047,14 +1053,18 @@ function matchRoomFromSheet1() {
     }
 
     var curRoom=(pr[pR]||'').toString().trim();
-    if (isValidRoom(curRoom)) continue;
     var guestRaw=(pr[pG]||'').toString().trim();
     if (!guestRaw||/^(รอ match)$/i.test(guestRaw)) continue;
     var ci=pr[pCI]?new Date(pr[pCI]):null;
     var pConfCol=pH.indexOf('Conf. Code');
     var rowConf=pConfCol>=0?(pr[pConfCol]||'').toString().trim():'';
-    var found=rowConf&&byConf[rowConf]?byConf[rowConf].room:null;
-    if (!found) found=findRoom(guestRaw,ci,byGuest);
+    var confRoom=rowConf&&byConf[rowConf]?byConf[rowConf].room:null;
+    var found=null;
+    if (confRoom) {
+      if (confRoom!==curRoom) found=confRoom; // conf code แม่นยำ แก้ทับค่าเดิมได้แม้จะดู valid อยู่แล้ว
+    } else if (!isValidRoom(curRoom)) {
+      found=findRoom(guestRaw,ci,byGuest); // fuzzy ต่ำกว่า conf → เติมเฉพาะช่องว่าง ห้ามทับของเดิม
+    }
     if (found) {
       paySheet.getRange(i+1,pR+1).setValue(found.toString().replace(/\.0$/,''));
       payData[i][pR]=found;
