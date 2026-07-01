@@ -925,6 +925,33 @@ function getSheet1CiCoMap() {
 // ═══════════════════════════════════════════════════════════════
 // MATCH ROOM FROM SHEET1
 // ═══════════════════════════════════════════════════════════════
+function debugConfLookup_(needle) {
+  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var s1=ss.getSheets()[0];
+  var s1Data=s1.getDataRange().getValues();
+  var s1HR=0;
+  for (var i=0;i<s1Data.length;i++) {
+    if (s1Data[i].join('').indexOf('เลขห้อง')>=0) { s1HR=i; break; }
+  }
+  var h1=s1Data[s1HR].map(function(h){return h.toString().trim().toLowerCase();});
+  var cR=h1.indexOf('เลขห้อง'), cG=h1.indexOf('ชื่อแขก'), cCI=h1.indexOf('เช็คอิน');
+  var hasExtractFn=typeof extractConfFromResId==='function';
+  var matches=[];
+  for (var i=s1HR+1;i<s1Data.length;i++) {
+    var row=s1Data[i];
+    var resId=(row[5]||'').toString().trim();
+    var guest=(row[cG]||'').toString().trim();
+    var room=(row[cR]||'').toString().trim();
+    var extracted=hasExtractFn?extractConfFromResId(resId):null;
+    var rawHit=needle&&resId.indexOf(needle)>=0;
+    var extractHit=needle&&extracted===needle;
+    if (rawHit||extractHit||(!needle&&/luis/i.test(guest))) {
+      matches.push({row:i+1,resId:resId,extracted:extracted,guest:guest,room:room,rawContainsNeedle:rawHit,extractedMatchesNeedle:extractHit});
+    }
+  }
+  return {hasExtractConfFromResId:hasExtractFn,resIdColumnIndexUsed:5,needle:needle,matches:matches,totalRowsScanned:s1Data.length-s1HR-1};
+}
+
 function matchRoomFromSheet1() {
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var s1=ss.getSheets()[0];
@@ -1694,6 +1721,10 @@ function doGet(e){
   }
   if (p.api==='1') return getDashboardData();
   // Tap-to-run from a phone browser (Sheets mobile app can't run Apps Script — see below)
+  if (p.action==='debugConf') {
+    var out=debugConfLookup_(p.conf||'');
+    return ContentService.createTextOutput(JSON.stringify(out,null,2)).setMimeType(ContentService.MimeType.JSON);
+  }
   if (p.action==='runMatchRoom') {
     var n=matchRoomFromSheet1();
     return HtmlService.createHtmlOutput(
