@@ -1036,38 +1036,38 @@ function matchRoomFromSheet1() {
           updated++;
         }
       } else if (notes.indexOf('✅')===0) {
-        // total row: รวมห้องจาก sub-rows (bid เดียวกัน, notes ขึ้นต้น ↳) ที่มีห้องถูกต้องอยู่แล้ว
-        // ไม่ใช้ findRoom() ซ้ำ เพราะชื่อสั้น/nickname อาจ match ไม่ได้
-        var pBid=pH.indexOf('Booking ID');
-        if(pBid<0) pBid=2; // fallback: column index 2
-        var totalBid=(pr[pBid]||'').toString().trim();
-        var allRooms=[], seen={};
-        // scan ทุก sub-row ที่มี bid เดียวกัน
-        for (var k=1;k<payData.length;k++) {
-          if (k===i) continue;
-          var kRow=payData[k];
-          var kOta=(kRow[pOTA]||'').toString().trim();
-          var kNotes=(kRow[pNotes]||'').toString().trim();
-          var kBid=(kRow[pBid]||'').toString().trim();
-          if (!kOta.startsWith('SCB')) continue;
-          if (kBid!==totalBid) continue;
-          if (!kNotes.startsWith('\u21b3')) continue; // ↳ sub-rows only
-          var kRoom=(kRow[pR]||'').toString().trim();
-          if (isValidRoom(kRoom) && !seen[kRoom]) { seen[kRoom]=true; allRooms.push(kRoom); }
-        }
-        // fallback: ถ้าหา sub-rows ไม่ได้ ลอง match ด้วย conf code ก่อน แล้วค่อย findRoom() ตามเดิม
-        if (allRooms.length===0) {
-          var guestMatches=notes.match(/([^|()]+)\(([A-Z0-9]{8,20})\)\s*NET/g)||[];
-          var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
-          guestMatches.forEach(function(gm){
-            var gm2=gm.match(/^([^(]+)\(([^)]+)\)/);
-            if (!gm2) return;
-            var gName=gm2[1].trim(), gConf=gm2[2].trim();
-            var r=gConf&&byConf[gConf]?byConf[gConf].room:null;
-            if (!r) r=findRoom(gName,ciSCB,byGuestAll);
-            if (r && !seen[r]) { seen[r]=true; allRooms.push(r.toString().replace(/\.0$/,'')); }
-          });
-        }
+        // total/summary row: รวมห้องของทุก sub-booking ใน batch นี้
+        // ใช้ conf code จาก notes ของแถวนี้เองเป็นหลัก (self-contained, deterministic)
+        // เดิม scan sibling sub-rows แทน ซึ่งพัง 2 ทาง: (1) ถ้า total rowถูกประมวลผลก่อน
+        // sub-rows ในรอบเดียวกัน จะอ่านค่าเก่าที่ยังไม่ถูกแก้ (2) ต่อให้ sub-rows ถูกแก้แล้ว
+        // แต่ค่าเดิมที่ "ดู valid" อยู่ก่อน (เช่น 103 ผิดๆ) ทำให้ allRooms ไม่เคยว่าง เลยไม่ยอม
+        // ตกไปใช้ conf-code fallback เลย — ห้อง 103 เลยค้างอยู่ในบรรทัดรวมแม้ sub-rows ถูกแล้ว
+        var seen={}, allRooms=[];
+        var guestMatches=notes.match(/([^|()]+)\(([A-Z0-9]{8,20})\)\s*NET/g)||[];
+        var ciSCB=pr[pCI]?new Date(pr[pCI]):null;
+        guestMatches.forEach(function(gm){
+          var gm2=gm.match(/^([^(]+)\(([^)]+)\)/);
+          if (!gm2) return;
+          var gName=gm2[1].trim(), gConf=gm2[2].trim();
+          var r=gConf&&byConf[gConf]?byConf[gConf].room:null; // 1) conf code ก่อนเสมอ
+          if (!r) r=findRoom(gName,ciSCB,byGuestAll); // 2) fuzzy fallback
+          if (!r && gConf) {
+            // 3) conf นี้ไม่มีใน Sheet1 เลย (เช่น Luis) → เช็คว่า sub-row ของ conf นี้เอง
+            // ถูกแก้มือไว้แล้วหรือยัง (เช่นพิมพ์เลขห้องใส่ตรงๆ ตอน auto-match หาไม่เจอ)
+            for (var k=1;k<payData.length;k++) {
+              var kNotes=(payData[k][pNotes]||'').toString().trim();
+              if (kNotes.startsWith('\u21b3') && kNotes.indexOf('('+gConf+')')>=0) {
+                var kRoom=(payData[k][pR]||'').toString().trim();
+                if (isValidRoom(kRoom)) r=kRoom;
+                break;
+              }
+            }
+          }
+          if (r) {
+            var rs=r.toString().replace(/\.0$/,'');
+            if (!seen[rs]) { seen[rs]=true; allRooms.push(rs); }
+          }
+        });
         if (allRooms.length===0) continue;
         var roomStr=allRooms.join(', ');
         if (roomStr!==curRoomSCB) {
