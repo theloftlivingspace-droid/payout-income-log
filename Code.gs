@@ -2505,7 +2505,8 @@ function styleSheet1(){
     'expedia' :{bg:'#ffc72c',font:'#333333'},
     'trip'    :{bg:'#00aaff',font:'#ffffff'},
     'direct'  :{bg:'#28a745',font:'#ffffff'},
-    'dbk'     :{bg:'#28a745',font:'#ffffff'}
+    'dbk'     :{bg:'#28a745',font:'#ffffff'},
+    'extranet':{bg:'#6c5ce7',font:'#ffffff'}
   };
 
   // อ่านข้อมูลทั้งหมดหลัง sort — single read สำหรับ styling
