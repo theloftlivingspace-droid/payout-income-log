@@ -3640,3 +3640,41 @@ function parseDate_(v) {
 
 
 
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-STYLE Sheet1 on edit — แก้ปัญหาเพิ่ม/ยกเลิก booking แล้ว style ไม่ run
+// ต้องรัน createSheet1EditTrigger() ครั้งเดียวใน Apps Script editor เพื่อติดตั้ง trigger
+// ═══════════════════════════════════════════════════════════════
+function onEditStyleSheet1(e) {
+  try {
+    if (!e || !e.range) return;
+    var sh = e.range.getSheet();
+    if (sh.getName() !== 'Sheet1') return;
+    if (e.range.getRow() === 1) return; // แก้แค่ header ไม่ต้อง restyle
+
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(5000)) {
+      Logger.log('onEditStyleSheet1: ชีตล็อกอยู่ (edit อื่นกำลังรัน) — ข้าม');
+      return;
+    }
+    try {
+      styleSheet1();
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log('onEditStyleSheet1 ERROR: ' + err.message);
+  }
+}
+
+function createSheet1EditTrigger() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  ScriptApp.getProjectTriggers()
+    .filter(function(t){ return t.getHandlerFunction() === 'onEditStyleSheet1'; })
+    .forEach(function(t){ ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('onEditStyleSheet1')
+    .forSpreadsheet(ss)
+    .onEdit()
+    .create();
+  Logger.log('Trigger: onEdit(Sheet1) → styleSheet1() ติดตั้งเรียบร้อย');
+}
