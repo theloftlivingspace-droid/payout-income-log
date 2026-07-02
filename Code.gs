@@ -1732,13 +1732,6 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ matchRoomFromSheet1() เสร็จแล้ว — อัปเดต ' + n + ' แถว</body>'
     );
   }
-  if (p.action==='runStyleSheet1') {
-    styleSheet1();
-    return HtmlService.createHtmlOutput(
-      '<meta name="viewport" content="width=device-width">' +
-      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ styleSheet1() เสร็จแล้ว — จัดสีแถวใน Sheet1 ใหม่แล้ว</body>'
-    );
-  }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
   if (p.action) {
     var out = handleRequest(p);
