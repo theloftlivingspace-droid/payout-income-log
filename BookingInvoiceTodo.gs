@@ -123,11 +123,16 @@ function readInvoices(ss, today) {
     // legacy single-conf rows carry that guest's actual stay dates —
     // remember them so the merged-row split below can use real dates
     // instead of the merged row's shared earliest/latest range.
+    // Keyed by bid+conf (not conf alone): a guest's Airbnb conf code stays
+    // the same across their whole stay and gets reused on every new partial
+    // payout for a long booking, so keying by conf alone let an unrelated
+    // earlier/later payout's row silently win the lookup for this batch
+    // (e.g. Nihel's conf matched a stale May payout instead of this one).
     var confSingle = String(r0[3] || '').trim();
     if (confSingle && confSingle.indexOf(',') < 0) {
       var ci0 = normDate(r0[6]), co0 = normDate(r0[7]);
       var net0 = parseFloat(String(r0[11]).replace(/,/g,'')) || 0;
-      if (ci0 && co0) ciCoByConf[confSingle] = { checkin: ci0, checkout: co0, net: net0 };
+      if (ci0 && co0) ciCoByConf[bid0 + '|' + confSingle] = { checkin: ci0, checkout: co0, net: net0 };
     }
   }
 
@@ -155,6 +160,11 @@ function readInvoices(ss, today) {
     var gross   = parseFloat(String(r[9]).replace(/,/g,''))  || 0;
     var nights  = parseInt(r[8]) || 0;
     var status  = String(r[12] || '');
+    // per-guest net parsed straight from this row's own note text, keyed by
+    // conf code — covers guests with no legacy single-conf row anywhere in
+    // the sheet (previously fell back to the full merged total for all of
+    // them instead of their real individual share).
+    var noteNetByConf = parseNoteNetByConf_(String(r[13] || ''));
 
     // multi-booking rows (ห้องหลายห้องใน conf เดียว): split เป็น invoice ย่อย
     var roomList  = rooms.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
@@ -167,9 +177,12 @@ function readInvoices(ss, today) {
       for (var j = 0; j < roomList.length; j++) {
         var iKey = bid + ':' + j;
         var jConf = confList[j];
-        var jCiCo = (jConf && ciCoByConf[jConf]) || null;
-        // net ย่อย: ดึงจาก ciCoByConf ถ้ามี (เก็บไว้ตอน PASS 1) ไม่งั้นใช้ merged net
-        var jNet = (jCiCo && jCiCo.net) ? jCiCo.net : net;
+        var jCiCo = (jConf && ciCoByConf[bid + '|' + jConf]) || null;
+        // net ย่อย: ดึงจาก legacy row เดียวกัน bid ก่อน ไม่งั้น parse จาก note
+        // ของแถวนี้เอง ไม่งั้น (ไม่มีทั้งคู่) fallback เป็น merged net
+        var jNet = (jCiCo && jCiCo.net)
+          ? jCiCo.net
+          : (jConf && noteNetByConf[jConf] !== undefined ? noteNetByConf[jConf] : net);
         result.push({
           invoiceKey     : iKey,
           bookingId      : bid,
@@ -215,6 +228,24 @@ function readInvoices(ss, today) {
     }
   }
   return result;
+}
+
+// ── parseNoteNetByConf_ ──────────────────────────────────────────────────
+// Parses "Guest(CONF) NET ฿1234.56" entries out of a payout note string,
+// returning { CONF: net } so per-guest splits can fall back to the row's
+// own note when no legacy single-conf row exists for that guest anywhere
+// else in the sheet. Handles minus sign either before or after ฿, and the
+// "Adjustment" wording used for negative/adjustment line items.
+function parseNoteNetByConf_(notes) {
+  var pattern = /([^|]+?)\(([^)]+)\)\s*(?:Adjustment\s+)?(?:NET\s+)?(-)?\s*฿(-)?([\d,]+\.?\d*)/g;
+  var out = {};
+  var m;
+  while ((m = pattern.exec(notes)) !== null) {
+    var conf = m[2].trim();
+    var sign = (m[3] === '-' || m[4] === '-') ? -1 : 1;
+    out[conf] = sign * parseFloat(m[5].replace(/,/g, ''));
+  }
+  return out;
 }
 
 // ── matchKey builders ─────────────────────────────────────────────────
