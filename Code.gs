@@ -545,15 +545,15 @@ function parseAirbnbEmail(msg) {
   var rows = [], i = 0;
   while (i < lines.length) {
     var ln = lines[i];
-    var gam = ln.match(/^(.+?)\s{2,}[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
+    var gam = ln.match(/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
     if (!gam) { i++; continue; }
     var guest = gam[1].trim();
-    var net   = gam[2].replace(/,/g,'');
+    var net   = (gam[2]?'-':'')+gam[3].replace(/,/g,'');
     if (!guest||guest.length<2) { i++; continue; }
     if (/^(Total paid|Details|Bank account|Airbnb account|Get help|View)/i.test(guest)) { i++; continue; }
 
     var homeLine='',listLine='',confCode='';
-    var checkIn='',checkOut='',isRes=false,resDate='';
+    var checkIn='',checkOut='',isRes=false,isAdj=false,resDate='';
     for (var j=i+1;j<Math.min(i+10,lines.length);j++) {
       var nl=lines[j];
       if (!homeLine && /^Home\s*[•·\u2022\u00b7\-]/.test(nl)) {
@@ -564,6 +564,12 @@ function parseAirbnbEmail(msg) {
         homeLine=nl; isRes=true;
         var rm=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (rm) resDate=slashToISO(rm[1]);
+      } else if (!homeLine&&/^Adjustment\b/i.test(nl)) {
+        homeLine=nl; isAdj=true;
+        var dm2=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (dm2) { checkIn=slashToISO(dm2[1]); checkOut=slashToISO(dm2[2]); }
+        var rm2=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (rm2) resDate=slashToISO(rm2[1]);
       } else if (homeLine&&!listLine&&nl.indexOf('(')>=0) {
         listLine=nl;
       } else if (homeLine&&!listLine&&!confCode&&/^The Loft|Loft|loft/i.test(nl)) {
@@ -587,10 +593,12 @@ function parseAirbnbEmail(msg) {
       checkIn,checkOut,
       checkIn&&checkOut?nightsBetween(checkIn,checkOut):'',
       batchTotal,'',net,
-      isRes?'โอนแล้ว (Resolution Payout)':'โอนแล้ว',
+      isRes?'โอนแล้ว (Resolution Payout)':(isAdj?'โอนแล้ว (Adjustment)':'โอนแล้ว'),
       isRes
         ?'Resolution Payout | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
-        :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt));
+        :(isAdj
+          ?'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
+          :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt)));
 
     if (confCode) {
       var ci2=lines.indexOf(confCode,i+1);
