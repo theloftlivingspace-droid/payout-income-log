@@ -1682,9 +1682,78 @@ function manualMatchSCBtoTrip(){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// doPost — trigger actions from external services (e.g. hotel-line-bot)
+// ONE-OFF FIX: 2026-07-04 Nihel adjustment mismatch (SCB-2026-07-04-17560.24)
+// Root cause: parseAirbnbEmail() dropped the "-฿22.07 THB" Adjustment line
+// (fixed above), so this backfills the missing row + the SCB match manually.
+// Call once via: <webapp-url>?action=fixNihel0704   then delete this block.
 // ═══════════════════════════════════════════════════════════════
-function doPost(e) {
+function fixNihel0704Payout() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  // Guard: don't double-run
+  var already = data.some(function(row) {
+    return (row[C.bid - 1] || '').toString() === 'SCB-2026-07-04-17560.24' &&
+           (row[C.status - 1] || '').toString().indexOf('✅') === 0;
+  });
+  if (already) return 'already fixed, skipped';
+
+  // 1) Backfill the missing Nihel Airbnb adjustment row
+  sheet.appendRow([
+    '2026-07-04', 'Airbnb', 'ABB-HMCTA5TJ35-ADJ-20260710', 'HMCTA5TJ35',
+    'Nihel', '113', '2026-05-03', '2026-07-10', 68,
+    17560.24, '', -22.07,
+    'โอนแล้ว (Adjustment)',
+    'Adjustment | 2026-07-10 | Batch THB 17560.24 | ส่ง 2026-07-04'
+  ]);
+
+  // 2) Replace the pending SCB row with split + summary matched rows
+  var pendingRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    if ((data[i][C.bid - 1] || '').toString() === 'SCB-2026-07-04-17560.24' &&
+        (data[i][C.guest - 1] || '').toString().indexOf('รอ match') >= 0) {
+      pendingRowIdx = i + 2; // +2: header row + 1-index
+      break;
+    }
+  }
+  if (pendingRowIdx === -1) return 'pending SCB row not found (already handled?)';
+
+  sheet.deleteRow(pendingRowIdx);
+
+  var splitRows = [
+    ['2026-07-04','SCB (RIS)','SCB-2026-07-04-17560.24','HMCCRTMXXP','Stanley Modjadji','103','2026-06-30','2026-07-02',2,'','',3200,'','↳ Stanley Modjadji (HMCCRTMXXP) NET ฿3200.00 | Value Date: 2026-07-04'],
+    ['2026-07-04','SCB (RIS)','SCB-2026-07-04-17560.24','HMKSR2SXRB','Derek Wong','205','2026-07-03','2026-07-10',7,'','',2996.17,'','↳ Derek Wong (HMKSR2SXRB) NET ฿2996.17 | Value Date: 2026-07-04'],
+    ['2026-07-04','SCB (RIS)','SCB-2026-07-04-17560.24','HMZKTN4AQ3','Leo Yang','108','2026-07-03','2026-08-01',29,'','',11386.14,'','↳ Leo Yang (HMZKTN4AQ3) NET ฿11386.14 | Value Date: 2026-07-04'],
+    ['2026-07-04','SCB (RIS)','SCB-2026-07-04-17560.24','HMCTA5TJ35','Nihel','113','2026-05-03','2026-07-10',68,'','',-22.07,'','↳ Nihel (HMCTA5TJ35) Adjustment NET -฿22.07 | Value Date: 2026-07-04'],
+    ['2026-07-04','SCB (RIS)','SCB-2026-07-04-17560.24',
+     'HMCCRTMXXP, HMKSR2SXRB, HMZKTN4AQ3, HMCTA5TJ35',
+     'Stanley Modjadji, Derek Wong, Leo Yang, Nihel','103, 205, 108, 113',
+     '2026-06-30','2026-08-01',32,17560.24,'',17560.24,
+     '✅ Matched - Airbnb payout',
+     '✅ Airbnb payout | Stanley Modjadji(HMCCRTMXXP) NET ฿3200 | Derek Wong(HMKSR2SXRB) NET ฿2996.17 | Leo Yang(HMZKTN4AQ3) NET ฿11386.14 | Nihel(HMCTA5TJ35) Adjustment -฿22.07 | Value Date: 2026-07-04']
+  ];
+
+  var startRow = pendingRowIdx;
+  splitRows.forEach(function(r, idx) {
+    sheet.insertRowBefore(startRow + idx);
+    sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setValues([r]);
+    var isSummary = r[C.status - 1].toString().indexOf('✅') === 0;
+    sheet.getRange(startRow + idx, 1, 1, HEADERS.length)
+      .setBackground(isSummary ? SCB_TOTAL_BG : SCB_SUB_BG);
+    if (isSummary) sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setFontWeight('bold');
+    else sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setFontStyle('italic').setFontColor('#444444');
+    sheet.getRange(startRow + idx, 10, 1, 3).setNumberFormat('#,##0.00');
+  });
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('Fixed Nihel 2026-07-04 mismatch', 'Done', 5);
+  return 'ok: backfilled Nihel adjustment + matched SCB-2026-07-04-17560.24';
+}
+
+
   try {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || '';
@@ -1738,6 +1807,13 @@ function doGet(e){
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width">' +
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ matchRoomFromSheet1() เสร็จแล้ว — อัปเดต ' + n + ' แถว</body>'
+    );
+  }
+  if (p.action==='fixNihel0704') {
+    var msg = fixNihel0704Payout();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNihel0704Payout(): ' + msg + '</body>'
     );
   }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
