@@ -1753,7 +1753,10 @@ function fixNihel0704Payout() {
   return 'ok: backfilled Nihel adjustment + matched SCB-2026-07-04-17560.24';
 }
 
-
+// ═══════════════════════════════════════════════════════════════
+// doPost — trigger actions from external services (e.g. hotel-line-bot)
+// ═══════════════════════════════════════════════════════════════
+function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || '';
