@@ -1682,6 +1682,46 @@ function manualMatchSCBtoTrip(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DIAGNOSTIC: dump every row related to the 2026-07-04 SCB-17560.24
+// payout (by bookingId, conf code, or guest name) as JSON so it can be
+// inspected without direct sheet access. Run once, paste the log output.
+// ═══════════════════════════════════════════════════════════════
+function dumpNihel0704Rows() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('sheet not found'); return 'sheet not found'; }
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var confs = ['HMCCRTMXXP', 'HMKSR2SXRB', 'HMZKTN4AQ3', 'HMCTA5TJ35'];
+  var names = ['Nihel', 'Leo Yang', 'Derek Wong', 'Stanley Modjadji'];
+
+  var hits = [];
+  data.forEach(function(row, i) {
+    var bid   = (row[C.bid - 1]   || '').toString();
+    var conf  = (row[C.conf - 1]  || '').toString();
+    var guest = (row[C.guest - 1] || '').toString();
+    var isHit = bid.indexOf('17560.24') >= 0 ||
+                confs.some(function(c) { return conf.indexOf(c) >= 0; }) ||
+                names.some(function(n) { return guest.indexOf(n) >= 0; });
+    if (isHit) {
+      hits.push({
+        rowNum: i + 2,
+        date: row[C.date - 1], ota: row[C.ota - 1], bid: bid, conf: conf,
+        guest: guest, room: row[C.room - 1], ci: row[C.ci - 1], co: row[C.co - 1],
+        nights: row[C.nights - 1], total: row[C.total - 1], comm: row[C.comm - 1],
+        net: row[C.net - 1], status: row[C.status - 1], notes: row[C.notes - 1]
+      });
+    }
+  });
+
+  var out = JSON.stringify(hits, null, 2);
+  Logger.log(out);
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ONE-OFF FIX: 2026-07-04 Nihel adjustment mismatch (SCB-2026-07-04-17560.24)
 // Root cause: parseAirbnbEmail() dropped the "-฿22.07 THB" Adjustment line
 // (fixed above), so this backfills the missing row + the SCB match manually.
