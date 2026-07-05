@@ -570,6 +570,14 @@ function parseAirbnbEmail(msg) {
         if (dm2) { checkIn=slashToISO(dm2[1]); checkOut=slashToISO(dm2[2]); }
         var rm2=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (rm2) resDate=slashToISO(rm2[1]);
+      } else if (!homeLine&&/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)) {
+        // Generic category line (e.g. "Cancellation Fee - 7/4/2026 - 7/7/2026")
+        // ที่ไม่ใช่ Home/Resolution/Adjustment - กันไม่ให้ scan รั่วไปกินข้อมูลของ
+        // guest ถัดไป (root cause: Nicco Joselito Tan หายไปจาก payout 2026-07-05
+        // เพราะ Moritz's Cancellation Fee line ไม่ match ตัวไหนเลย)
+        homeLine=nl;
+        var dm3=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (dm3) { checkIn=slashToISO(dm3[1]); checkOut=slashToISO(dm3[2]); }
       } else if (homeLine&&!listLine&&nl.indexOf('(')>=0) {
         listLine=nl;
       } else if (homeLine&&!listLine&&!confCode&&/^The Loft|Loft|loft/i.test(nl)) {
@@ -2089,7 +2097,9 @@ function roomFromText(s){
   // แต่ถ้า s มีเลขห้องด้วย เช่น "103 Elegance" → จับเลขก่อน
   // จับเลขห้องเฉพาะที่รู้จัก (whitelist) ป้องกัน false positive เช่น 967 จาก listing text
   var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
-  var numFirst=s.match(/(\d{3})/);
+  // \b กันไม่ให้จับ "103" จากตัวเลข listing ID ยาวๆ เช่น (1036340279802824887)
+  // ผิดพลาดเป็นเลขห้อง — ต้องเป็น token 3 หลักโดดๆ เท่านั้น
+  var numFirst=s.match(/\b(\d{3})\b/);
   if (numFirst && KNOWN_ROOMS.indexOf(numFirst[1])>=0) return numFirst[1];
   // ชื่อประเภทที่ไม่มีเลข → คืน ? ให้ match ทีหลัง
   if (/elegance|legacy|allure|radiance|serene|greenery|rhythm|cosy|private apartment|mycondo/.test(s)) return '?';
