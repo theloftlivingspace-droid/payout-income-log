@@ -1802,6 +1802,44 @@ function fixNihel0704Payout() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-05 stale duplicate row from before the
+// parseAirbnbEmail() "Cancellation Fee" fix. The old broken parse
+// mislabeled Moritz's cancellation row with Nicco Joselito Tan's
+// homeLine/listLine/confCode (HMQ8C4C4DF), which then collided with
+// the correctly re-parsed Nicco row and caused matchSCBtoOTA's bid
+// dedup to skip Nicco's real +2996.07, leaving SCB-2026-07-05-2845.22
+// stuck at "รอ match". This deletes the stale row and re-triggers
+// matching. Call once via: <webapp-url>?action=fixNicco0705  then
+// delete this block.
+// ═══════════════════════════════════════════════════════════════
+function fixNicco0705DuplicateRow() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var targetRow = -1;
+  for (var i = 0; i < data.length; i++) {
+    var guest = (data[i][C.guest - 1] || '').toString().trim();
+    var conf  = (data[i][C.conf - 1]  || '').toString().trim();
+    var co    = normalizeDate(data[i][C.co - 1] || '');
+    if (guest === 'Moritz' && conf === 'HMQ8C4C4DF' && co === '2026-07-11') {
+      targetRow = i + 2; // header row + 1-index
+      break;
+    }
+  }
+  if (targetRow === -1) return 'stale row not found (already cleaned up?)';
+
+  sheet.deleteRow(targetRow);
+  matchSCBtoOTA(sheet);
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('Removed stale Moritz/HMQ8C4C4DF duplicate + rematched', 'Done', 5);
+  return 'ok: deleted stale row at ' + targetRow + ', rematch triggered';
+}
+
+// ═══════════════════════════════════════════════════════════════
 // doPost — trigger actions from external services (e.g. hotel-line-bot)
 // ═══════════════════════════════════════════════════════════════
 function doPost(e) {
@@ -1865,6 +1903,13 @@ function doGet(e){
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width">' +
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNihel0704Payout(): ' + msg + '</body>'
+    );
+  }
+  if (p.action==='fixNicco0705') {
+    var msg2 = fixNicco0705DuplicateRow();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNicco0705DuplicateRow(): ' + msg2 + '</body>'
     );
   }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
