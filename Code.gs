@@ -589,6 +589,22 @@ function parseAirbnbEmail(msg) {
       }
     }
 
+    // Resolution/Adjustment payout lines don't carry the actual stay dates
+    // themselves (e.g. "Resolution Payout 7/6/2026") - the real Home d/m/yyyy
+    // date range often appears on a nearby line but gets skipped above because
+    // homeLine is already locked in by the Resolution/Adjustment match.
+    // root cause: 2026-07-06 Moritz Resolution Payout had blank checkIn/checkOut,
+    // which broke matching against Sheet1 booking (BookingInvoiceTodo "ไม่มี Booking").
+    // Backfill by scanning the same window for any date-range line we haven't used yet.
+    if ((isRes||isAdj) && !checkIn) {
+      for (var k=i+1;k<Math.min(i+10,lines.length);k++) {
+        var nlk=lines[k];
+        if (nlk===homeLine) continue;
+        var dmk=nlk.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (dmk) { checkIn=slashToISO(dmk[1]); checkOut=slashToISO(dmk[2]); break; }
+      }
+    }
+
     // conf ใน AIRBNB_EXTENSIONS → ใช้ checkOut เป็น suffix เพื่อแยก payout หลายครั้ง
     var extSuffix = (confCode && AIRBNB_EXTENSIONS[confCode] && checkOut)
       ? '-EXT-'+checkOut.replace(/-/g,'') : '';
