@@ -1122,7 +1122,11 @@ function matchRoomFromSheet1() {
     if (confRoom) {
       if (confRoom!==curRoom) found=confRoom; // conf code แม่นยำ แก้ทับค่าเดิมได้แม้จะดู valid อยู่แล้ว
     } else if (!isValidRoom(curRoom)) {
-      found=findRoom(guestRaw,ci,byGuest); // fuzzy ต่ำกว่า conf → เติมเฉพาะช่องว่าง ห้ามทับของเดิม
+      // ใช้ byGuestAll (รวม booking ที่ยกเลิกแล้ว) เหมือน SCB branch ด้านบน —
+      // เดิมใช้ byGuest (ไม่รวม cancelled) ทำให้ guest ที่ถูกยกเลิกใน Sheet1
+      // (เช่น "204 Elegance ยกเลิก") หาห้องไม่เจอเลยแม้จะมี conf/checkin ตรงกัน
+      // root cause: Moritz Reinhold Airbnb rows ค้างเป็น "?" ทั้งที่ SCB row ข้างๆ resolve ได้
+      found=findRoom(guestRaw,ci,byGuestAll); // fuzzy ต่ำกว่า conf → เติมเฉพาะช่องว่าง ห้ามทับของเดิม
     }
     if (found) {
       paySheet.getRange(i+1,pR+1).setValue(found.toString().replace(/\.0$/,''));
