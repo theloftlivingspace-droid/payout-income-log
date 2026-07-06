@@ -3877,3 +3877,36 @@ function createSheet1EditTrigger() {
     .create();
   Logger.log('Trigger: onEdit(Sheet1) → styleSheet1() ติดตั้งเรียบร้อย');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-06 Moritz Reinhold Resolution Payout
+// Backfills checkIn/checkOut/nights that were left blank by the
+// Resolution Payout parsing bug (fixed in parseAirbnbEmail above).
+// Run once from the Apps Script editor, then delete/ignore this fn.
+// ═══════════════════════════════════════════════════════════════
+function fixMoritzResolutionDates() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sh = ss.getSheetByName(TAB_NAME);
+  var data = sh.getDataRange().getValues();
+
+  var targets = {
+    'ABB-HMM2KX89SS-RES-20260706': true,
+    'SCB-2026-07-06-1296.26': true
+  };
+  var ci = new Date('2026-07-04T00:00:00');
+  var co = new Date('2026-07-07T00:00:00');
+  var nights = 3;
+
+  var fixed = [];
+  for (var r = 1; r < data.length; r++) {
+    var bid = String(data[r][C.bid - 1] || '').trim();
+    if (!targets[bid]) continue;
+    sh.getRange(r + 1, C.ci).setValue(ci);
+    sh.getRange(r + 1, C.co).setValue(co);
+    sh.getRange(r + 1, C.nights).setValue(nights);
+    fixed.push(bid + ' (row ' + (r + 1) + ')');
+  }
+
+  Logger.log('fixMoritzResolutionDates: fixed ' + fixed.length + ' rows: ' + fixed.join(', '));
+  return fixed;
+}
