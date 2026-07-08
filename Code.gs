@@ -163,6 +163,8 @@ var MANUAL_ROOM_FIXES = [
   { guest:'SM Muhaimen',                        room:'203' },  // conf HMTQJXECS9 (cancel)
   { guest:'妘芮 林',                             room:'103' },  // standalone
   { guest:'Siren Wills',                        room:'203' },  // standalone
+  // ── ยกเลิกก่อนเช็คอิน แต่ Airbnb โอน cancellation payout มา ──────
+  { conf:'HMFTY4YTTK', room:'204' },  // 佰顺 王 / จอง 3 คืน 07-05→07-08 ยกเลิกก่อนเข้าพัก (ไม่ใช่ occupancy จริง)
 ];
 
 
@@ -1160,6 +1162,33 @@ function findRoom(guestRaw,ci,byGuest) {
       return dc.length ? dc[0].room : null;
     }
     return cands[0].room; // ถ้าไม่มี CI → return ห้องแรก
+  }
+
+  // 1.5 CJK / substring match — ชื่อแขกจีนใน payout มักสั้นกว่าใน Sheet1 (เช่น
+  // Airbnb payout ใช้ "佰顺" แต่ Sheet1 มี "佰顺 王" เต็ม) ทำให้ exact match (step 1)
+  // พลาด และ fuzzy word-match (step 2) ก็พลาดด้วยเพราะ CJK token สั้น (≤2 ตัวอักษร)
+  // เลยโดน filter ทิ้งตั้งแต่ p.length>2 จน parts กลายเป็น [] — เคส HMFTY4YTTK/佰顺
+  // (ยกเลิกก่อนเช็คอิน) เป็นตัวอย่าง root cause นี้
+  if (/[\u3400-\u9FFF]/.test(gk)) {
+    var gkNoSpace=gk.replace(/\s+/g,'');
+    var cjkCands=[];
+    Object.keys(byGuest).forEach(function(k){
+      var kNoSpace=k.replace(/\s+/g,'');
+      if (kNoSpace&&gkNoSpace&&(kNoSpace.indexOf(gkNoSpace)>=0||gkNoSpace.indexOf(kNoSpace)>=0)) {
+        cjkCands=cjkCands.concat(byGuest[k]);
+      }
+    });
+    if (cjkCands.length) {
+      if (ci) {
+        var dcCjk=cjkCands.filter(function(c){
+          return c.ci&&Math.abs(ci.getTime()-c.ci.getTime())<=CI_WINDOW_EXACT;
+        });
+        if (dcCjk.length) return dcCjk[0].room;
+        // ไม่มี candidate ตรงช่วงวันที่ → ปล่อยตกไป step ถัดไป ไม่เดา
+      } else if (cjkCands.length) {
+        return cjkCands[0].room;
+      }
+    }
   }
 
   // 2. Fuzzy: แต่ละ word part ต้อง match "ทั้งคำ" กับคำใน key เท่านั้น (ลด threshold เป็น 1 ถ้าชื่อ part ยาวพอ)
