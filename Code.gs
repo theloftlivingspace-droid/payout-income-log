@@ -192,6 +192,7 @@ var BOOKING_COM_SCB_MAP = [
   // { scbId: 'SCB-2026-05-26-1423.79', bids: ['6339174127'] },           // Natthaphon
   // { scbId: 'SCB-YYYY-MM-DD-AMOUNT', bids: ['BID1','BID2'], nets: ['NET1','NET2'] },  // multi
   { scbId: 'SCB-2026-06-16-2756.73', bids: ['6506062257'], nets: ['2756.73'] },  // Shahid Hussain / room 300
+  { scbId: 'SCB-2026-07-07-2161.31', bids: ['5418031702'], nets: ['2161.31'] },  // Phattaragun Buatee / room 205
 ];
 
 // ═══════════════════════════════════════════════════════════════
