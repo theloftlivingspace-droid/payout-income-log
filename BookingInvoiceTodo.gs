@@ -227,6 +227,54 @@ function readInvoices(ss, today) {
       });
     }
   }
+
+  // ── PASS 3: PrePaid Booking.com/Expedia rows ที่ยังไม่ ✅ ใน Bank_Ledger ──
+  // Booking.com net ที่แม่นยำมาจาก Financial Report CSV เท่านั้น (ส่งเป็น
+  // ระยะๆ ตาม payout frequency ของ property นี้) — รอให้ SCB match ก่อนถึงจะ
+  // ทำ invoice ได้ ทำให้ invoice ล่าช้าเป็นระยะยาวโดยไม่จำเป็น เพิ่ม PrePaid
+  // row ตรงจาก Payout_Income_Log เข้ามาเลย (net เป็นค่าประมาณจาก LH email,
+  // ทำเครื่องหมาย estimated:true) เพื่อให้เริ่มทำ invoice ได้ทันทีที่เช็คเอาท์
+  // แล้วค่อยอัปเดต net จริงอัตโนมัติเมื่อ syncBookingComFinancialReports()
+  // หรือ matchBookingComSCB() ยืนยันยอดภายหลัง
+  var srcSheet = ss.getSheetByName(TAB_NAME); // 'Payout_Income_Log' (const จาก Code.gs)
+  if (srcSheet) {
+    var srcRows = srcSheet.getDataRange().getValues();
+    for (var k = 1; k < srcRows.length; k++) {
+      var sr = srcRows[k];
+      var sOta = String(sr[1] || '').trim();
+      if (sOta !== 'Booking.com' && sOta !== 'Booking' && sOta !== 'Expedia') continue;
+      var sBid = String(sr[2] || '').trim();
+      if (!sBid || seen[sBid]) continue; // มี invoice ยืนยันแล้วจาก Bank_Ledger
+      var sStatus = String(sr[12] || '');
+      if (!/^PrePaid|^Net Rate/.test(sStatus)) continue; // เอาเฉพาะที่ยังรอ settle
+
+      seen[sBid] = true;
+      var fs2 = firstSeenMap[sBid] || normDate(sr[0]);
+      if (!firstSeenMap[sBid]) { firstSeenMap[sBid] = fs2; saveFirstSeen('invoice', sBid, fs2); }
+
+      result.push({
+        invoiceKey      : sBid,
+        bookingId       : sBid,
+        room            : String(sr[5] || '').trim(),
+        guest           : String(sr[4] || '').trim(),
+        checkin         : normDate(sr[6]),
+        checkout        : normDate(sr[7]),
+        nights          : parseInt(sr[8]) || 0,
+        net             : parseFloat(String(sr[11]).replace(/,/g,'')) || 0,
+        groupNet        : parseFloat(String(sr[9]).replace(/,/g,'')) || 0,
+        isSplitFromMulti: false,
+        ota             : sOta,
+        status          : sStatus,
+        estimated       : true,
+        detectedDate    : fs2,
+        detectedToday   : (fs2 === today),
+        done            : !!doneMap[sBid],
+        confList        : [sBid],
+        matchKeys       : []
+      });
+    }
+  }
+
   return result;
 }
 
