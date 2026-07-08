@@ -219,6 +219,7 @@ function quickReformat() {
   if (!sheet) { Logger.log('quickReformat: ไม่พบ sheet'); return; }
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
+  syncBookingComFinancialReports();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -378,6 +379,7 @@ function fullRebuild() {
   // ── match + format ────────────────────────────────────────────
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
+  syncBookingComFinancialReports();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -430,6 +432,7 @@ function dailyEmailSync() {
   newRows.forEach(function(r){ appendRow(sheet,r); });
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
+  syncBookingComFinancialReports();
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -2012,8 +2015,9 @@ function getDashboardDataAsString(){ return getDashboardData().getContent(); }
 // matchBookingComSCB — match SCB rows → Booking.com via BOOKING_COM_SCB_MAP
 // รัน after matchSCBtoOTA (จะไม่ re-match rows ที่มี ✅ แล้ว)
 // ═══════════════════════════════════════════════════════════════
-function matchBookingComSCB() {
-  if (!BOOKING_COM_SCB_MAP.length) return;
+function matchBookingComSCB(mapEntries) {
+  var entries = mapEntries || BOOKING_COM_SCB_MAP;
+  if (!entries.length) return;
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
   if (!sheet) return;
@@ -2046,7 +2050,7 @@ function matchBookingComSCB() {
   });
 
   var matched = 0;
-  BOOKING_COM_SCB_MAP.forEach(function(entry) {
+  entries.forEach(function(entry) {
     var scb = scbIndex[entry.scbId];
     if (!scb) { Logger.log('matchBookingComSCB: SCB not found: ' + entry.scbId); return; }
     if (scb.notes.indexOf('✅') === 0) { Logger.log('matchBookingComSCB: already matched: ' + entry.scbId); return; }
@@ -2097,6 +2101,147 @@ function matchBookingComSCB() {
   Logger.log('matchBookingComSCB: ' + matched + ' SCB rows matched');
   if (matched > 0) SpreadsheetApp.getActiveSpreadsheet()
     .toast('Booking.com match: ' + matched + ' รายการ', 'Done', 4);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOKING.COM FINANCIAL REPORT — CSV attachment parser
+// อีเมล "Booking.com Monthly/Weekly Financial Report" (ส่งมาเป็นระยะ)
+// มี CSV แนบ ("Payout_from_YYYY-MM-DD_until_YYYY-MM-DD.csv") ที่มีครบ:
+// Gross amount / Commission / Payments Service Fee / VAT / Transaction amount
+// (= net จริงต่อ reservation) และแถว "(Payout)" ที่บอก Payout amount+date+bank
+// → แม่นกว่า parseLHEmail มาก (LH confirmation email ไม่มี fee/VAT เลย
+//   ทำให้ net ที่คำนวณจาก total-commission เพี้ยนเสมอ)
+// ═══════════════════════════════════════════════════════════════
+function parseBookingComFinancialReport(msg) {
+  var subj = msg.getSubject() || '';
+  if (!/Financial Report/i.test(subj)) return { reservations: [], payouts: [] };
+
+  var atts = msg.getAttachments();
+  var csvAtt = null;
+  for (var i = 0; i < atts.length; i++) {
+    if (/^Payout_from.*\.csv$/i.test(atts[i].getName())) { csvAtt = atts[i]; break; }
+  }
+  if (!csvAtt) return { reservations: [], payouts: [] };
+
+  var content = csvAtt.getDataAsString('UTF-8');
+  var data = Utilities.parseCsv(content);
+  if (!data || data.length < 2) return { reservations: [], payouts: [] };
+
+  var header = data[0], col = {};
+  header.forEach(function(h, i) { col[h.trim()] = i; });
+
+  var reservations = [], payouts = [];
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    if (!row || row.length < 2) continue;
+    var type = (row[col['Type/Transaction type']] || '').trim();
+    var stmtDesc = (row[col['Statement Descriptor']] || '').trim();
+
+    if (type === '(Payout)') {
+      payouts.push({
+        stmtDesc: stmtDesc,
+        amount:   parseAmt(row[col['Payout amount']]),
+        date:     (row[col['Payout date']] || '').trim(),
+        bank:     (row[col['Bank account']] || '').trim()
+      });
+      continue;
+    }
+    if (type !== 'Reservation') continue;
+
+    var net = parseAmt(row[col['Transaction amount']]);
+    if (!net) continue; // ข้ามแถวที่ไม่มีผลกระทบทางการเงิน (เช่น cancel ที่ไม่มีค่าปรับ)
+
+    reservations.push({
+      stmtDesc:   stmtDesc,
+      bid:        (row[col['Reference number']] || '').trim(),
+      ci:         (row[col['Check-in date']]  || '').trim(),
+      co:         (row[col['Check-out date']] || '').trim(),
+      status:     (row[col['Reservation status']] || '').trim(),
+      gross:      parseAmt(row[col['Gross amount']]),
+      commission: parseAmt(row[col['Commission']]),
+      fee:        parseAmt(row[col['Payments Service Fee']]),
+      vat:        parseAmt(row[col['VAT']]),
+      net:        net
+    });
+  }
+  return { reservations: reservations, payouts: payouts };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// syncBookingComFinancialReports — entry point
+// 1) หา email "Financial Report" ล่าสุด, parse CSV
+// 2) แก้ net/commission ของ Booking.com rows ที่มีอยู่แล้วใน Payout_Income_Log
+//    ให้ตรงกับตัวเลขจริงจาก Booking.com (แทนค่าที่ parseLHEmail คำนวณผิด)
+// 3) auto-build entries (scbId + bids + nets ต่อ payout) แล้วส่งเข้า
+//    matchBookingComSCB() เพื่อ match กับ SCB transfer โดยไม่ต้องเติม
+//    BOOKING_COM_SCB_MAP ด้วยมืออีกต่อไป
+// ═══════════════════════════════════════════════════════════════
+function syncBookingComFinancialReports() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return;
+
+  var threads = GmailApp.search(
+    'from:noreply@booking.com subject:"Financial Report" after:' + SEARCH_FROM, 0, 50);
+
+  var allReservations = [], allPayouts = [];
+  threads.forEach(function(t) {
+    t.getMessages().forEach(function(m) {
+      try {
+        var parsed = parseBookingComFinancialReport(m);
+        allReservations = allReservations.concat(parsed.reservations);
+        allPayouts = allPayouts.concat(parsed.payouts);
+      } catch (e) { Logger.log('ERR syncBookingComFinancialReports parse: ' + e.message); }
+    });
+  });
+  if (!allPayouts.length) { Logger.log('syncBookingComFinancialReports: ไม่พบ report ใหม่'); return; }
+
+  // ── 1) แก้ net/commission ของ row ที่มีอยู่แล้วให้ตรงกับ CSV ──────
+  var last = sheet.getLastRow();
+  if (last >= 2) {
+    var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+    var bidRowIdx = {};
+    data.forEach(function(row, i) {
+      var ota = (row[C.ota - 1] || '').toString().trim();
+      if (ota !== 'Booking.com' && ota !== 'Booking') return;
+      var bid = (row[C.bid - 1] || '').toString().trim();
+      if (bid) bidRowIdx[bid] = i;
+    });
+    allReservations.forEach(function(res) {
+      var idx = bidRowIdx[res.bid];
+      if (idx === undefined) return; // ยังไม่มี prepaid row (parseLHEmail ยังไม่เจอ) ข้ามไปก่อน
+      var sr = idx + 2;
+      sheet.getRange(sr, C.total).setValue(res.gross);
+      sheet.getRange(sr, C.comm).setValue(
+        Math.round((Math.abs(res.commission) + Math.abs(res.fee)) * 100) / 100);
+      sheet.getRange(sr, C.net).setValue(res.net);
+      sheet.getRange(sr, C.notes).setValue(
+        'via Booking.com Financial Report | Gross ฿' + res.gross +
+        ' | Commission ฿' + res.commission + ' | Payments Fee ฿' + res.fee +
+        ' | VAT ฿' + res.vat + ' | NET ฿' + res.net);
+    });
+  }
+
+  // ── 2) group reservations ตาม stmtDesc → auto-build BOOKING_COM_SCB_MAP entries ──
+  var byDesc = {};
+  allReservations.forEach(function(res) {
+    (byDesc[res.stmtDesc] = byDesc[res.stmtDesc] || []).push(res);
+  });
+
+  var autoEntries = [];
+  allPayouts.forEach(function(p) {
+    var group = byDesc[p.stmtDesc] || [];
+    if (!group.length) return;
+    autoEntries.push({
+      scbId: 'SCB-' + p.date + '-' + fmtAmt(p.amount),
+      bids:  group.map(function(g) { return g.bid; }),
+      nets:  group.map(function(g) { return fmtAmt(g.net); })
+    });
+  });
+
+  if (autoEntries.length) matchBookingComSCB(autoEntries);
+  Logger.log('syncBookingComFinancialReports: ' + allReservations.length +
+    ' reservations แก้ไข, ' + autoEntries.length + ' payout entries ส่ง match');
 }
 
 // ═══════════════════════════════════════════════════════════════
