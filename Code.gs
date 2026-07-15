@@ -2064,6 +2064,11 @@ function matchBookingComSCB(mapEntries) {
   });
 
   // index Booking.com rows by bid
+  // NOTE: rowIndex is tracked so that once a Booking.com row is consumed by a
+  // successful SCB match, the ORIGINAL row can be retired too — otherwise it
+  // sits forever with a stale "รอ Booking.com โอน" status even though the
+  // payout was already reconciled on the SCB side (same root cause bug as
+  // matchSCBtoOTA had for Airbnb/Trip.com/Expedia).
   var bkIndex = {};
   data.forEach(function(row, i) {
     var _bkOta=(row[C.ota-1]||'').toString().trim(); if (_bkOta!=='Booking.com'&&_bkOta!=='Booking') return;
@@ -2074,7 +2079,8 @@ function matchBookingComSCB(mapEntries) {
       ci:     row[C.ci-1],
       co:     row[C.co-1],
       nights: row[C.nights-1],
-      room:   (row[C.room-1]||'').toString().trim()
+      room:   (row[C.room-1]||'').toString().trim(),
+      rowIndex: i+2
     };
   });
 
@@ -2105,27 +2111,47 @@ function matchBookingComSCB(mapEntries) {
     var insertRows = buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
       bids, guests, nets, {}, detailByBid, 'Booking.com remittance');
 
+    // Combine the SCB row (delete+expand) with the original Booking.com row(s)
+    // being retired (plain delete) into one descending-row-order pass, so row
+    // numbers never get invalidated mid-run.
     var sr = scb.rowIdx + 2;
-    sheet.deleteRow(sr);
-    insertRows.forEach(function(r, idx) {
-      sheet.insertRowBefore(sr + idx);
-      sheet.getRange(sr+idx, 1, 1, HEADERS.length).setValues([[
-        r.date, r.ota, r.bookingId, r.confCode,
-        r.guest, r.room, r.checkIn, r.checkOut, r.nights,
-        r.total, r.commission, r.net, r.status, r.notes
-      ]]);
-      var bg = (r._isTotal || r._isSingle) ? SCB_TOTAL_BG : SCB_SUB_BG;
-      sheet.getRange(sr+idx, 1, 1, HEADERS.length).setBackground(bg);
-      if (r._isTotal || r._isSingle) {
-        sheet.getRange(sr+idx, 1, 1, HEADERS.length).setFontWeight('bold');
-      } else {
-        sheet.getRange(sr+idx, 1, 1, HEADERS.length)
-          .setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
-      }
-      sheet.getRange(sr+idx, 10, 1, 3).setNumberFormat('#,##0.00');
+    var originalRows = bids
+      .map(function(b) { return bkIndex[b] ? bkIndex[b].rowIndex : null; })
+      .filter(function(r) { return r && r !== sr; });
+
+    var seenRow = {};
+    var ops = [{ row: sr, type: 'scb' }];
+    seenRow[sr] = true;
+    originalRows.forEach(function(r) {
+      if (seenRow[r]) return;
+      seenRow[r] = true;
+      ops.push({ row: r, type: 'plain' });
+    });
+    ops.sort(function(a, b) { return b.row - a.row; });
+
+    ops.forEach(function(op) {
+      sheet.deleteRow(op.row);
+      if (op.type !== 'scb') return;
+      insertRows.forEach(function(r, idx) {
+        sheet.insertRowBefore(op.row + idx);
+        sheet.getRange(op.row+idx, 1, 1, HEADERS.length).setValues([[
+          r.date, r.ota, r.bookingId, r.confCode,
+          r.guest, r.room, r.checkIn, r.checkOut, r.nights,
+          r.total, r.commission, r.net, r.status, r.notes
+        ]]);
+        var bg = (r._isTotal || r._isSingle) ? SCB_TOTAL_BG : SCB_SUB_BG;
+        sheet.getRange(op.row+idx, 1, 1, HEADERS.length).setBackground(bg);
+        if (r._isTotal || r._isSingle) {
+          sheet.getRange(op.row+idx, 1, 1, HEADERS.length).setFontWeight('bold');
+        } else {
+          sheet.getRange(op.row+idx, 1, 1, HEADERS.length)
+            .setFontWeight('normal').setFontStyle('italic').setFontColor('#444444');
+        }
+        sheet.getRange(op.row+idx, 10, 1, 3).setNumberFormat('#,##0.00');
+      });
     });
     matched++;
-    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', '));
+    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', ') + ' (retired ' + originalRows.length + ' original row(s))');
   });
   Logger.log('matchBookingComSCB: ' + matched + ' SCB rows matched');
   if (matched > 0) SpreadsheetApp.getActiveSpreadsheet()
