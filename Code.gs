@@ -471,6 +471,11 @@ function rematch() {
 function dailyEmailSync() {
   var yday = new Date(); yday.setDate(yday.getDate()-1);
   var since = Utilities.formatDate(yday,'Asia/Bangkok','yyyy/MM/dd');
+  // Booking.com Financial Reports can arrive a bit later than the stay/booking
+  // itself, so give that specific search a wider (but still bounded) buffer
+  // instead of the full-history rescan it used to do on every hourly run.
+  var finReportLookback = new Date(); finReportLookback.setDate(finReportLookback.getDate()-14);
+  var finReportSince = Utilities.formatDate(finReportLookback,'Asia/Bangkok','yyyy/MM/dd');
   var sheet = setupSheet();
   var existing = getExistingIds(sheet);
   var newRows = [];
@@ -500,7 +505,7 @@ function dailyEmailSync() {
   newRows.forEach(function(r){ appendRow(sheet,r); });
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
-  syncBookingComFinancialReports();
+  syncBookingComFinancialReports(finReportSince);
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -2297,13 +2302,17 @@ function parseBookingComFinancialReport(msg) {
 //    matchBookingComSCB() เพื่อ match กับ SCB transfer โดยไม่ต้องเติม
 //    BOOKING_COM_SCB_MAP ด้วยมืออีกต่อไป
 // ═══════════════════════════════════════════════════════════════
-function syncBookingComFinancialReports() {
+function syncBookingComFinancialReports(sinceOverride) {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
   if (!sheet) return;
 
+  // sinceOverride lets frequent/hourly callers (dailyEmailSync) scan a narrow
+  // recent window instead of the full history that manual audits (quickReformat,
+  // fullRebuild) still use via SEARCH_FROM. Booking.com reports can lag the stay
+  // date by a couple weeks, so callers should pass a buffer, not just "yesterday".
   var threads = GmailApp.search(
-    'from:noreply@booking.com subject:"Financial Report" after:' + SEARCH_FROM, 0, 50);
+    'from:noreply@booking.com subject:"Financial Report" after:' + (sinceOverride || SEARCH_FROM), 0, 50);
 
   var allReservations = [], allPayouts = [];
   threads.forEach(function(t) {
@@ -3621,6 +3630,23 @@ function fillMissingCiCoFromEmail() {
   var pCI   = h.indexOf('เช็คอิน');
   var pCO   = h.indexOf('เช็คเอาท์');
   var pN    = h.indexOf('คืน');
+
+  // Cheap pre-check: is there anything to fill at all? On most hourly runs
+  // every Airbnb row already has ci/co, so we can skip the expensive
+  // full-history Gmail search (up to 200 threads back to SEARCH_FROM)
+  // entirely — that unbounded rescan running every hour is what was
+  // pushing dailyEmailSync over the execution time limit.
+  var anyMissing = false;
+  for (var pre = 1; pre < data.length; pre++) {
+    var prow = data[pre];
+    if ((prow[pOTA] || '').toString().trim() !== 'Airbnb') continue;
+    if (prow[pCI] && prow[pCO]) continue;
+    if ((prow[pConf] || '').toString().trim()) { anyMissing = true; break; }
+  }
+  if (!anyMissing) {
+    Logger.log('fillMissingCiCoFromEmail: nothing missing, skip Gmail search');
+    return;
+  }
 
   // Build map: confCode -> {ci, co} from all Airbnb payout emails
   var emailMap = {};
