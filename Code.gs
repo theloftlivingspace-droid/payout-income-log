@@ -274,33 +274,53 @@ function cleanupDuplicateExtRows() {
   Logger.log('cleanupDuplicateExtRows: deleted '+toDelete.length+' dup rows');
 }
 
+// GAS caps a single execution at 6 min (consumer) / 30 min (Workspace).
+// This budget leaves headroom under the tighter 6-min cap so we always
+// get a chance to checkpoint before Google kills the run outright.
+const REBUILD_TIME_BUDGET_MS = 4.5 * 60 * 1000;
+const REBUILD_PROP_DONE      = 'FULLREBUILD_DONE_SOURCES';
+const REBUILD_PROP_TOTAL     = 'FULLREBUILD_TOTAL_NEW';
+
 function fullRebuild() {
+  var startTime = Date.now();
+  var props = PropertiesService.getScriptProperties();
+
   var sheet    = setupSheet();
   cleanupDuplicateExtRows();              // ลบ dup EXT rows ก่อน rebuild
   var existing = getExistingIds(sheet);   // Set ของ bookingId ที่มีอยู่แล้ว
 
-  // ── fetch เฉพาะ rows ใหม่ ────────────────────────────────────
-  var newRows = [];
+  var doneSources = JSON.parse(props.getProperty(REBUILD_PROP_DONE) || '[]');
+  var totalNew     = Number(props.getProperty(REBUILD_PROP_TOTAL) || 0);
+  var timedOut     = false;
+
+  function timeLeft() { return (Date.now() - startTime) < REBUILD_TIME_BUDGET_MS; }
+
+  // ── fetch เฉพาะ rows ใหม่ (checkpointed per-source) ─────────────
   var sources = [
-    { q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:parseAirbnbEmail, lim:100 },
-    { q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
-    { q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
+    { key:'airbnb', q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:parseAirbnbEmail, lim:100 },
+    { key:'lh',     q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
+    { key:'scb',    q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
   ];
   sources.forEach(function(s) {
+    if (timedOut || doneSources.indexOf(s.key) !== -1) return;
+    if (!timeLeft()) { timedOut = true; return; }
     var threads;
     try {
       threads = GmailApp.search(s.q, 0, s.lim);
     } catch(e) {
       Logger.log('ERR fullRebuild search ['+s.q+']: '+e.message);
+      doneSources.push(s.key);
       return;
     }
-    threads.forEach(function(t) {
+    for (var ti = 0; ti < threads.length; ti++) {
+      if (!timeLeft()) { timedOut = true; break; }
+      var t = threads[ti];
       var msgs;
       try {
         msgs = t.getMessages();
       } catch(e) {
         Logger.log('ERR fullRebuild getMessages: '+e.message);
-        return;
+        continue;
       }
       msgs.forEach(function(m) {
         try {
@@ -314,7 +334,8 @@ function fullRebuild() {
             }
             if (!existing.has(bid)) {
               existing.set(bid, Number(r.net)||0);
-              newRows.push(r);
+              appendRow(sheet, r);   // write immediately — nothing lost if we time out
+              totalNew++;
             }
           });
         } catch(e) {
@@ -322,61 +343,89 @@ function fullRebuild() {
           Logger.log('ERR fullRebuild parse: '+e.message+' | '+subj);
         }
       });
-    });
-  });
-  // Trip.com (multi-query, ต้อง handle seen เอง)
-  var tripSeen = {};
-  [
-    'subject:"ยืนยันหมายเลขการจอง" after:'+SEARCH_FROM,
-    'subject:"Booking no" after:'+SEARCH_FROM,
-    'from:noreply_htl@trip.com after:'+SEARCH_FROM
-  ].forEach(function(q) {
-    var threads;
-    try {
-      threads = GmailApp.search(q, 0, 50);
-    } catch(e) {
-      Logger.log('ERR Trip search ['+q+']: '+e.message);
-      return;
     }
-    threads.forEach(function(t) {
-      var msgs;
-      try {
-        msgs = t.getMessages();
-      } catch(e) {
-        Logger.log('ERR Trip getMessages: '+e.message);
-        return;
-      }
-      msgs.forEach(function(m) {
-        try {
-          parseTripEmail(m).forEach(function(r) {
-            if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-              tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
-            }
-          });
-        } catch(e) { Logger.log('ERR Trip: '+e.message); }
-        try {
-          m.getAttachments().forEach(function(att) {
-            var aType = att.getContentType().toLowerCase();
-            var aName = att.getName().toLowerCase();
-            if (!/eml|message\/rfc822|octet-stream/.test(aType+aName)) return;
-            var content = att.getDataAsString('UTF-8');
-            var text = stripHTML(content.replace(/=\r?\n/g,'').replace(/=3D/g,'='));
-            if (!/Reservation no\.|trip\.com/i.test(text)) return;
-            parseTripText(text, fmtDate(m.getDate()), m.getSubject()).forEach(function(r) {
-              if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
-                tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0); newRows.push(r);
-              }
-            });
-          });
-        } catch(e) { Logger.log('ERR Trip att: '+e.message); }
-      });
-    });
+    if (!timedOut) doneSources.push(s.key);
   });
 
-  Logger.log('fullRebuild: +'+newRows.length+' new rows to append');
+  // Trip.com (multi-query, ต้อง handle seen เอง)
+  if (!timedOut && doneSources.indexOf('trip') === -1) {
+    if (!timeLeft()) {
+      timedOut = true;
+    } else {
+      var tripSeen = {};
+      var tripQueries = [
+        'subject:"ยืนยันหมายเลขการจอง" after:'+SEARCH_FROM,
+        'subject:"Booking no" after:'+SEARCH_FROM,
+        'from:noreply_htl@trip.com after:'+SEARCH_FROM
+      ];
+      for (var qi = 0; qi < tripQueries.length && !timedOut; qi++) {
+        var q = tripQueries[qi];
+        var threads2;
+        try {
+          threads2 = GmailApp.search(q, 0, 50);
+        } catch(e) {
+          Logger.log('ERR Trip search ['+q+']: '+e.message);
+          continue;
+        }
+        for (var ti2 = 0; ti2 < threads2.length; ti2++) {
+          if (!timeLeft()) { timedOut = true; break; }
+          var t2 = threads2[ti2];
+          var msgs2;
+          try {
+            msgs2 = t2.getMessages();
+          } catch(e) {
+            Logger.log('ERR Trip getMessages: '+e.message);
+            continue;
+          }
+          msgs2.forEach(function(m) {
+            try {
+              parseTripEmail(m).forEach(function(r) {
+                if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
+                  tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0);
+                  appendRow(sheet, r); totalNew++;
+                }
+              });
+            } catch(e) { Logger.log('ERR Trip: '+e.message); }
+            try {
+              m.getAttachments().forEach(function(att) {
+                var aType = att.getContentType().toLowerCase();
+                var aName = att.getName().toLowerCase();
+                if (!/eml|message\/rfc822|octet-stream/.test(aType+aName)) return;
+                var content = att.getDataAsString('UTF-8');
+                var text = stripHTML(content.replace(/=\r?\n/g,'').replace(/=3D/g,'='));
+                if (!/Reservation no\.|trip\.com/i.test(text)) return;
+                parseTripText(text, fmtDate(m.getDate()), m.getSubject()).forEach(function(r) {
+                  if (!tripSeen[r.bookingId] && !existing.has(r.bookingId)) {
+                    tripSeen[r.bookingId] = true; existing.set(r.bookingId, Number(r.net)||0);
+                    appendRow(sheet, r); totalNew++;
+                  }
+                });
+              });
+            } catch(e) { Logger.log('ERR Trip att: '+e.message); }
+          });
+        }
+      }
+      if (!timedOut) doneSources.push('trip');
+    }
+  }
 
-  // ── append new rows only ──────────────────────────────────────
-  newRows.forEach(function(r){ appendRow(sheet, r); });
+  // ── ran out of time budget → checkpoint + auto-resume, skip match/format/export this pass ──
+  if (timedOut) {
+    props.setProperty(REBUILD_PROP_DONE, JSON.stringify(doneSources));
+    props.setProperty(REBUILD_PROP_TOTAL, String(totalNew));
+    scheduleRebuildContinuation();
+    var partialMsg = 'fullRebuild: time budget reached after ['+doneSources.join(', ')+'] — +'+totalNew+' rows appended so far, auto-continuing in ~1 min';
+    Logger.log(partialMsg);
+    try { SpreadsheetApp.getActiveSpreadsheet().toast(partialMsg, 'Rebuild continuing…', 8); } catch(e) {}
+    return;
+  }
+
+  // ── fetch phase fully complete → clear checkpoint, run match + format ──
+  props.deleteProperty(REBUILD_PROP_DONE);
+  props.deleteProperty(REBUILD_PROP_TOTAL);
+  clearRebuildContinuationTrigger();
+
+  Logger.log('fullRebuild: +'+totalNew+' new rows appended (fetch phase complete)');
 
   // ── match + format ────────────────────────────────────────────
   matchSCBtoOTA(sheet);
@@ -393,9 +442,26 @@ function fullRebuild() {
   rebuildBankLedger();
   exportToGitHub();
 
-  var msg = 'Rebuild เสร็จ: +'+newRows.length+' rows ใหม่ | Bank_Ledger updated | GitHub synced';
+  var msg = 'Rebuild เสร็จ: +'+totalNew+' rows ใหม่ | Bank_Ledger updated | GitHub synced';
   Logger.log(msg);
-  SpreadsheetApp.getActiveSpreadsheet().toast(msg, 'Done', 8);
+  try { SpreadsheetApp.getActiveSpreadsheet().toast(msg, 'Done', 8); } catch(e) {}
+}
+
+// One-off trigger that re-invokes fullRebuild() shortly after a checkpointed
+// timeout, so a slow rebuild finishes across multiple executions without
+// any manual re-click. Cleared automatically once the fetch phase completes.
+function scheduleRebuildContinuation() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(t){ return t.getHandlerFunction()==='fullRebuild'; })
+    .forEach(function(t){ ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('fullRebuild')
+    .timeBased().after(60*1000)
+    .create();
+}
+function clearRebuildContinuationTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(t){ return t.getHandlerFunction()==='fullRebuild'; })
+    .forEach(function(t){ ScriptApp.deleteTrigger(t); });
 }
 
 function rematch() {
