@@ -3568,7 +3568,13 @@ function matchExtranetSCB(sheet) {
   if (!extranetBookings.length) { Logger.log('matchExtranetSCB: no unmatched Extranet bookings'); return; }
 
   var WINDOW_DAYS=5;
-  var matched=0, flagged=0;
+
+  // ── เก็บ SCB rows ที่ยัง unmatched ก่อน แล้วค่อยหา candidate ทั้งสองทาง ──
+  // (เดิม bug: loop ทีละแถว SCB แล้ว auto-match ทันทีถ้าเจอ booking candidate
+  // เดียว โดยไม่เช็คว่า booking นั้นมี SCB row อื่นที่ใกล้เคียงกว่า/เข้าเงื่อนไข
+  // เดียวกันอยู่ด้วยหรือเปล่า → แถวที่ถูกประมวลผลก่อน (ไม่จำเป็นว่าใช่ตัวจริง)
+  // จะ "ชิง" match booking ไปก่อน ทำให้แถวที่ถูกต้องจริงเหลือ 0 candidate)
+  var scbRows=[];
   for (var r=0;r<data.length;r++) {
     var row=data[r];
     var ota  =(row[C.ota-1]  ||'').toString().trim();
@@ -3577,40 +3583,93 @@ function matchExtranetSCB(sheet) {
     var status=(row[C.status-1]||'').toString().trim();
     if (guest!=='รอ match') continue;   // ถูก match ไปแล้วโดย matchSCBtoOTA/matchBookingComSCB
     if (status.indexOf('⚠️')===0) continue; // ถูก flag ไว้ให้ตรวจสอบมือแล้ว รอบก่อนหน้า
-
-    var scbAmt =fmtAmt(row[C.net-1]);
-    var scbDate=normalizeDate(row[C.date-1]);
-
-    var candidates=extranetBookings.filter(function(b){
-      var diffCi=Math.abs(Math.round((new Date(scbDate)-new Date(b.ci))/86400000));
-      var diffCo=Math.abs(Math.round((new Date(scbDate)-new Date(b.co))/86400000));
-      return diffCi<=WINDOW_DAYS || diffCo<=WINDOW_DAYS;
+    scbRows.push({
+      dataRow: r,
+      amt:  fmtAmt(row[C.net-1]),
+      date: normalizeDate(row[C.date-1])
     });
+  }
+  if (!scbRows.length) { Logger.log('matchExtranetSCB: no unmatched SCB rows'); return; }
 
-    if (candidates.length===1) {
-      var b=candidates[0];
+  // candidate booking index(es) ต่อ SCB row
+  scbRows.forEach(function(s){
+    s.bookingIdx=[];
+    extranetBookings.forEach(function(b,bi){
+      var diffCi=Math.abs(Math.round((new Date(s.date)-new Date(b.ci))/86400000));
+      var diffCo=Math.abs(Math.round((new Date(s.date)-new Date(b.co))/86400000));
+      if (diffCi<=WINDOW_DAYS || diffCo<=WINDOW_DAYS) s.bookingIdx.push(bi);
+    });
+  });
+
+  // candidate SCB row index(es) ต่อ booking (ทิศทางกลับ)
+  var bookingToScb={};
+  scbRows.forEach(function(s,si){
+    s.bookingIdx.forEach(function(bi){
+      (bookingToScb[bi]=bookingToScb[bi]||[]).push(si);
+    });
+  });
+
+  var matched=0, flagged=0;
+  scbRows.forEach(function(s){
+    if (s.bookingIdx.length===0) return; // ไม่มี candidate เลย ปล่อยเป็น รอ match ต่อไป
+    var uniqueAndMutual = s.bookingIdx.length===1
+      && bookingToScb[s.bookingIdx[0]].length===1;
+
+    if (uniqueAndMutual) {
+      var b=extranetBookings[s.bookingIdx[0]];
       var nts=nightsBetween(b.ci,b.co);
-      var note='✅ Direct/Extranet Pay | '+b.guest+' resId='+b.resId+' | NET ฿'+scbAmt+' | Value Date: '+scbDate;
-      sheet.getRange(r+2,C.guest,1,1).setValue(b.guest);
-      sheet.getRange(r+2,C.room,1,1).setValue(b.room);
-      sheet.getRange(r+2,C.ci,1,1).setValue(b.ci);
-      sheet.getRange(r+2,C.co,1,1).setValue(b.co);
-      if (nts) sheet.getRange(r+2,C.nights,1,1).setValue(nts);
-      sheet.getRange(r+2,C.status,1,1).setValue('✅ Matched - Direct/Extranet');
-      sheet.getRange(r+2,C.notes,1,1).setValue(note);
-      extranetBookings.splice(extranetBookings.indexOf(b),1); // กันแถว SCB อื่นแย่ง match booking เดียวกันซ้ำ
+      var note='✅ Direct/Extranet Pay | '+b.guest+' resId='+b.resId+' | NET ฿'+s.amt+' | Value Date: '+s.date;
+      sheet.getRange(s.dataRow+2,C.guest,1,1).setValue(b.guest);
+      sheet.getRange(s.dataRow+2,C.room,1,1).setValue(b.room);
+      sheet.getRange(s.dataRow+2,C.ci,1,1).setValue(b.ci);
+      sheet.getRange(s.dataRow+2,C.co,1,1).setValue(b.co);
+      if (nts) sheet.getRange(s.dataRow+2,C.nights,1,1).setValue(nts);
+      sheet.getRange(s.dataRow+2,C.status,1,1).setValue('✅ Matched - Direct/Extranet');
+      sheet.getRange(s.dataRow+2,C.notes,1,1).setValue(note);
       matched++;
-    } else if (candidates.length>1) {
-      sheet.getRange(r+2,C.status,1,1)
-        .setValue('⚠️ รอตรวจสอบ Direct/Extranet ('+candidates.length+' candidates)');
+    } else {
+      // ไม่ mutual-unique: booking นี้มี SCB candidate มากกว่า 1 แถว
+      // หรือ SCB แถวนี้ match ได้หลาย booking → ห้ามเดา ต้องตรวจสอบมือ
+      sheet.getRange(s.dataRow+2,C.status,1,1)
+        .setValue('⚠️ รอตรวจสอบ Direct/Extranet ('+s.bookingIdx.length+' candidates)');
       flagged++;
     }
-  }
+  });
   Logger.log('matchExtranetSCB: '+matched+' matched, '+flagged+' flagged for manual review');
   if (matched>0 || flagged>0) {
     SpreadsheetApp.getActiveSpreadsheet()
       .toast('Direct/Extranet match: '+matched+' matched, '+flagged+' ต้องตรวจสอบมือ','Done',5);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX (2026-07-16): revert the SCB-2026-07-14-681.38 row that
+// matchExtranetSCB's older (buggy) version wrongly matched to Natphatsorn's
+// booking (the REAL match is SCB-2026-07-15-5514.83, checkout day exact).
+// Resets it back to raw pending state so both rows get correctly flagged
+// by the fixed matchExtranetSCB() for manual review instead.
+// ═══════════════════════════════════════════════════════════════
+function revertBadDirectExtranetMatch_20260716() {
+  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet=ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('sheet not found'); return; }
+  var last=sheet.getLastRow();
+  var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+  var reverted=0;
+  data.forEach(function(row,i){
+    var bid=(row[C.bid-1]||'').toString().trim();
+    if (bid!=='SCB-2026-07-14-681.38') return;
+    var r=i+2;
+    sheet.getRange(r,C.guest,1,1).setValue('รอ match');
+    sheet.getRange(r,C.room,1,1).setValue('?');
+    sheet.getRange(r,C.ci,1,1).setValue('');
+    sheet.getRange(r,C.co,1,1).setValue('');
+    sheet.getRange(r,C.nights,1,1).setValue('');
+    sheet.getRange(r,C.status,1,1).setValue('เงินเข้าบัญชี x256221');
+    sheet.getRange(r,C.notes,1,1).setValue('via SCB Transfer | เงินโอนเข้าบัญชี');
+    reverted++;
+  });
+  Logger.log('revertBadDirectExtranetMatch_20260716: '+reverted+' row(s) reverted');
 }
 
 // ═══════════════════════════════════════════════════════════════
