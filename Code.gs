@@ -222,6 +222,7 @@ function quickReformat() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
+  resolveManualExtranetHints(sheet);
   matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
@@ -432,6 +433,7 @@ function fullRebuild() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
+  resolveManualExtranetHints(sheet);
   matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
@@ -508,6 +510,7 @@ function dailyEmailSync() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports(finReportSince);
+  resolveManualExtranetHints(sheet);
   matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
@@ -1669,6 +1672,7 @@ function fullSyncAndLedger() {
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var paySheet=ss.getSheetByName(TAB_NAME);
   matchSCBtoOTA(paySheet);
+  resolveManualExtranetHints(paySheet);
   matchExtranetSCB(paySheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
@@ -3670,6 +3674,74 @@ function revertBadDirectExtranetMatch_20260716() {
     reverted++;
   });
   Logger.log('revertBadDirectExtranetMatch_20260716: '+reverted+' row(s) reverted');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANUAL OVERRIDE: resolveManualExtranetHints
+// ใช้เมื่อ matchExtranetSCB() flag แถวว่า "⚠️ รอตรวจสอบ" (มีหลาย candidate
+// เกินจะเดาเอง) — พี่แค่พิมพ์ "resId=EXP-xxxxx" ทับลงในช่อง หมายเหตุ ของ
+// แถว SCB ที่ถูกต้องจริง แล้วรันฟังก์ชันนี้ (หรือ quickReformat/fullSyncAndLedger
+// ที่เรียกฟังก์ชันนี้ให้อัตโนมัติ) — ระบบจะไปดึง guest/room/ci/co/nights จาก
+// Sheet1 ตาม resId นั้นมาเติมให้ครบเองทั้งหมด ไม่ต้องพิมพ์ทีละช่อง
+// ═══════════════════════════════════════════════════════════════
+function resolveManualExtranetHints(sheet) {
+  if (!sheet) { var ss0=SpreadsheetApp.openById(MASTER_SHEET_ID); sheet=ss0.getSheetByName(TAB_NAME); }
+  if (!sheet) { Logger.log('resolveManualExtranetHints: sheet not found'); return; }
+  var last=sheet.getLastRow();
+  if (last<2) return;
+
+  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var s1=ss.getSheets()[0];
+  var s1Data=s1.getDataRange().getValues();
+  var s1HR=0;
+  for (var i=0;i<s1Data.length;i++) {
+    if (s1Data[i].join('').indexOf('เลขห้อง')>=0) { s1HR=i; break; }
+  }
+  var byResId={};
+  for (var i=s1HR+1;i<s1Data.length;i++) {
+    var row=s1Data[i];
+    var resId=(row[5]||'').toString().trim();
+    if (!resId) continue;
+    var roomRaw=(row[0]||'').toString().trim();
+    var roomNum=roomRaw.match(/^(\d+)/);
+    byResId[resId]={
+      room: roomNum?roomNum[1]:'?',
+      guest:(row[1]||'').toString().trim(),
+      ci: normalizeSheetDate_(row[2]),
+      co: normalizeSheetDate_(row[3])
+    };
+  }
+
+  var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+  var resolved=0;
+  data.forEach(function(row,i){
+    var ota=(row[C.ota-1]||'').toString().trim();
+    if (!ota.startsWith('SCB')) return;
+    // รับได้ทั้ง "resId=XXX" เดี่ยวๆ หรือ "resId=XXX" ต่อท้ายข้อความอื่น
+    var notes=(row[C.notes-1]||'').toString().trim();
+    var m=notes.match(/resId\s*=\s*([A-Za-z0-9_-]+)/i);
+    if (!m) return;
+    if (notes.indexOf('✅ Direct/Extranet Pay')===0) return; // resolve ไปแล้ว ข้าม
+    var resId=m[1];
+    var b=byResId[resId];
+    if (!b) { Logger.log('resolveManualExtranetHints: resId ไม่พบใน Sheet1: '+resId); return; }
+    var r=i+2;
+    var scbAmt =fmtAmt(row[C.net-1]);
+    var scbDate=normalizeDate(row[C.date-1]);
+    var nts=nightsBetween(b.ci,b.co);
+    var note='✅ Direct/Extranet Pay | '+b.guest+' resId='+resId+' | NET ฿'+scbAmt+' | Value Date: '+scbDate;
+    sheet.getRange(r,C.guest,1,1).setValue(b.guest);
+    sheet.getRange(r,C.room,1,1).setValue(b.room);
+    sheet.getRange(r,C.ci,1,1).setValue(b.ci);
+    sheet.getRange(r,C.co,1,1).setValue(b.co);
+    if (nts) sheet.getRange(r,C.nights,1,1).setValue(nts);
+    sheet.getRange(r,C.status,1,1).setValue('✅ Matched - Direct/Extranet');
+    sheet.getRange(r,C.notes,1,1).setValue(note);
+    resolved++;
+  });
+  Logger.log('resolveManualExtranetHints: '+resolved+' row(s) resolved from manual resId hint');
+  if (resolved>0) SpreadsheetApp.getActiveSpreadsheet()
+    .toast('Manual resId match: '+resolved+' resolved','Done',4);
 }
 
 // ═══════════════════════════════════════════════════════════════
