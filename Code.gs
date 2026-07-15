@@ -2125,13 +2125,18 @@ function matchBookingComSCB(mapEntries) {
   if (last < 2) return;
   var data = sheet.getRange(2, 1, last-1, HEADERS.length).getValues();
 
-  // index SCB rows by bid
+  // index SCB rows by bid (exact) + by amount (fallback, สำหรับ fuzzy date match)
   var scbIndex = {};
+  var scbByAmount = {};
   data.forEach(function(row, i) {
     var ota = (row[C.ota-1]||'').toString().trim();
     if (!ota.startsWith('SCB')) return;
     var bid = (row[C.bid-1]||'').toString().trim();
-    scbIndex[bid] = { rowIdx: i, notes: (row[C.notes-1]||'').toString() };
+    var notes = (row[C.notes-1]||'').toString();
+    var amt = fmtAmt(row[C.net-1]);
+    var dt  = normalizeDate(row[C.date-1]);
+    scbIndex[bid] = { rowIdx: i, notes: notes };
+    (scbByAmount[amt] = scbByAmount[amt] || []).push({ bid: bid, date: dt, rowIdx: i, notes: notes });
   });
 
   // index Booking.com rows by bid
@@ -2158,6 +2163,29 @@ function matchBookingComSCB(mapEntries) {
   var matched = 0;
   entries.forEach(function(entry) {
     var scb = scbIndex[entry.scbId];
+    if (!scb) {
+      // Fallback: entry.scbId มักถูก auto-generate จากวันที่ใน Booking.com
+      // Financial Report CSV (วัน Booking.com สั่งจ่าย) ซึ่งมักไม่ตรงกับวันที่
+      // เงินเข้าบัญชี SCB จริง (bank clearing ใช้เวลา 2–7 วัน) ทำให้ exact bid
+      // string ไม่ match กันเลยแม้ยอดจะตรงเป๊ะ — หา candidate ด้วยยอดเงิน
+      // เดียวกัน ในช่วง ±7 วันจากวันที่ generate ไว้ แล้วเลือกอันที่วันใกล้สุด
+      var m = /^SCB-(\d{4}-\d{2}-\d{2})-([\d.]+)$/.exec(entry.scbId);
+      if (m) {
+        var wantDate = m[1], wantAmt = fmtAmt(m[2]);
+        var candidates = (scbByAmount[wantAmt] || []).filter(function(c) {
+          if (c.notes.indexOf('✅') === 0) return false; // ตัดตัวที่ match ไปแล้ว
+          var diff = Math.abs((new Date(c.date) - new Date(wantDate)) / 86400000);
+          return diff <= 7;
+        });
+        if (candidates.length) {
+          candidates.sort(function(a, b) {
+            return Math.abs(new Date(a.date)-new Date(wantDate)) - Math.abs(new Date(b.date)-new Date(wantDate));
+          });
+          scb = { rowIdx: candidates[0].rowIdx, notes: candidates[0].notes };
+          Logger.log('matchBookingComSCB: fuzzy-matched ' + entry.scbId + ' → SCB row date ' + candidates[0].date + ' (bid=' + candidates[0].bid + ')');
+        }
+      }
+    }
     if (!scb) { Logger.log('matchBookingComSCB: SCB not found: ' + entry.scbId); return; }
     if (scb.notes.indexOf('✅') === 0) { Logger.log('matchBookingComSCB: already matched: ' + entry.scbId); return; }
 
@@ -3631,27 +3659,35 @@ function fillMissingCiCoFromEmail() {
   var pCO   = h.indexOf('เช็คเอาท์');
   var pN    = h.indexOf('คืน');
 
-  // Cheap pre-check: is there anything to fill at all? On most hourly runs
-  // every Airbnb row already has ci/co, so we can skip the expensive
-  // full-history Gmail search (up to 200 threads back to SEARCH_FROM)
-  // entirely — that unbounded rescan running every hour is what was
-  // pushing dailyEmailSync over the execution time limit.
-  var anyMissing = false;
-  for (var pre = 1; pre < data.length; pre++) {
-    var prow = data[pre];
-    if ((prow[pOTA] || '').toString().trim() !== 'Airbnb') continue;
-    if (prow[pCI] && prow[pCO]) continue;
-    if ((prow[pConf] || '').toString().trim()) { anyMissing = true; break; }
+  // Early-exit: ถ้าไม่มีแถว Airbnb ที่ขาด CI/CO เลย ก็ไม่ต้องเสียเวลา Gmail
+  // search + parse อีเมลนับร้อยฉบับทุกรอบที่ trigger รัน (เดิมรีบิลด์
+  // emailMap ใหม่หมดทุกครั้งแม้ไม่มีอะไรให้ fill เลย — เป็นสาเหตุหลักที่ทำให้
+  // script วิ่งเกิน 6 นาที)
+  var missingRows = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if ((row[pOTA] || '').toString().trim() !== 'Airbnb') continue;
+    if (row[pCI] && row[pCO]) continue;
+    var conf = (row[pConf] || '').toString().trim();
+    if (!conf) continue;
+    missingRows.push(i);
   }
-  if (!anyMissing) {
-    Logger.log('fillMissingCiCoFromEmail: nothing missing, skip Gmail search');
+  if (!missingRows.length) {
+    Logger.log('fillMissingCiCoFromEmail: 0 rows missing ci/co — skip Gmail search');
     return;
   }
 
-  // Build map: confCode -> {ci, co} from all Airbnb payout emails
+  // Build map: confCode -> {ci, co} from Airbnb payout emails
+  // ใช้ relative date window (ย้อนหลัง 6 เดือน) แทน hardcode 'after:2026/01/01'
+  // เดิมวันที่ตายตัวทำให้ search window โตขึ้นเรื่อยๆ ทุกวันที่ผ่านไป
+  var since = new Date();
+  since.setMonth(since.getMonth() - 6);
+  var sinceStr = Utilities.formatDate(since, 'Asia/Bangkok', 'yyyy/MM/dd');
+
+
   var emailMap = {};
   var threads = GmailApp.search(
-    'from:automated@airbnb.com subject:"sent a payout" after:2026/01/01', 0, 200
+    'from:automated@airbnb.com subject:"sent a payout" after:' + sinceStr, 0, 200
   );
   threads.forEach(function(t) {
     t.getMessages().forEach(function(m) {
@@ -3669,23 +3705,17 @@ function fillMissingCiCoFromEmail() {
   Logger.log('fillMissingCiCoFromEmail: email map built, ' + Object.keys(emailMap).length + ' confs');
 
   var updated = 0;
-  for (var i = 1; i < data.length; i++) {
+  missingRows.forEach(function(i) {
     var row  = data[i];
-    var ota  = (row[pOTA] || '').toString().trim();
-    if (ota !== 'Airbnb') continue;
-    var ci   = row[pCI];
-    var co   = row[pCO];
-    if (ci && co) continue; // already has ci/co
     var conf = (row[pConf] || '').toString().trim();
-    if (!conf) continue;
     var info = emailMap[conf];
-    if (!info) continue;
+    if (!info) return;
     sheet.getRange(i + 1, pCI + 1).setValue(info.ci);
     sheet.getRange(i + 1, pCO + 1).setValue(info.co);
     if (!row[pN]) sheet.getRange(i + 1, pN + 1).setValue(info.nights);
     updated++;
     Logger.log('fillMissingCiCo: filled conf=' + conf + ' ci=' + info.ci + ' co=' + info.co);
-  }
+  });
   Logger.log('fillMissingCiCoFromEmail: ' + updated + ' rows filled');
 }
 
