@@ -222,6 +222,7 @@ function quickReformat() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
+  matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -431,6 +432,7 @@ function fullRebuild() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
+  matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -506,6 +508,7 @@ function dailyEmailSync() {
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports(finReportSince);
+  matchExtranetSCB(sheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -1666,6 +1669,7 @@ function fullSyncAndLedger() {
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var paySheet=ss.getSheetByName(TAB_NAME);
   matchSCBtoOTA(paySheet);
+  matchExtranetSCB(paySheet);
   matchRoomFromSheet1();
   applyManualRoomFixes();
   syncSCBTotalRooms();
@@ -3504,6 +3508,109 @@ function matchSCBtoOTA(sheet) {
     });
   });
   Logger.log('matchSCBtoOTA: done');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MATCH SCB → Direct/Extranet booking (จ่ายตรงกับโรงแรม ไม่มี OTA email)
+// ใช้กับ booking ใน Sheet1 ที่ channel = 'Extranet' (resId ขึ้นต้น 'EXP-')
+// ซึ่งไม่มี OTA payout email ให้ match แบบ matchSCBtoOTA เลย — ต้อง match
+// ตรงกับ Sheet1 โดยใช้ช่วงวันที่เช็คอิน/เช็คเอาท์แทนยอดเงิน (batch/net sum)
+// รัน "หลัง" matchSCBtoOTA + matchBookingComSCB เสมอ เพราะแถวที่ยัง
+// guest==='รอ match' หมายความว่าไม่มี OTA ไหน match ได้เลย
+// ═══════════════════════════════════════════════════════════════
+function matchExtranetSCB(sheet) {
+  if (!sheet) { var ss0=SpreadsheetApp.openById(MASTER_SHEET_ID); sheet=ss0.getSheetByName(TAB_NAME); }
+  if (!sheet) { Logger.log('matchExtranetSCB: sheet not found'); return; }
+  var last=sheet.getLastRow();
+  if (last<2) return;
+
+  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var s1=ss.getSheets()[0];
+  var s1Data=s1.getDataRange().getValues();
+
+  // หา header row ('เลขห้อง') เหมือน matchRoomFromSheet1
+  var s1HR=0;
+  for (var i=0;i<s1Data.length;i++) {
+    if (s1Data[i].join('').indexOf('เลขห้อง')>=0) { s1HR=i; break; }
+  }
+
+  var data=sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+
+  // resId ที่ถูก match ไปแล้ว (เก็บไว้ใน notes ตอน match สำเร็จ)
+  var alreadyMatchedResId={};
+  data.forEach(function(row){
+    var notes=(row[C.notes-1]||'').toString();
+    var m=notes.match(/resId=([^\s|]+)/);
+    if (m) alreadyMatchedResId[m[1]]=true;
+  });
+
+  // รวบรวม booking channel Extranet จาก Sheet1 ที่ยังไม่เคย match
+  var extranetBookings=[];
+  for (var i=s1HR+1;i<s1Data.length;i++) {
+    var row=s1Data[i];
+    var roomRaw=(row[0]||'').toString().trim();
+    if (!roomRaw) continue;
+    var channel=(row[4]||'').toString().trim();
+    var resId  =(row[5]||'').toString().trim();
+    if (channel!=='Extranet'||!resId) continue;
+    if (alreadyMatchedResId[resId]) continue;
+    var roomNum=roomRaw.match(/^(\d+)/);
+    if (!roomNum) continue;
+    var ci=normalizeSheetDate_(row[2]);
+    var co=normalizeSheetDate_(row[3]);
+    if (!ci||!co) continue;
+    extranetBookings.push({
+      room:roomNum[1],
+      guest:(row[1]||'').toString().trim(),
+      ci:ci, co:co, resId:resId
+    });
+  }
+  if (!extranetBookings.length) { Logger.log('matchExtranetSCB: no unmatched Extranet bookings'); return; }
+
+  var WINDOW_DAYS=5;
+  var matched=0, flagged=0;
+  for (var r=0;r<data.length;r++) {
+    var row=data[r];
+    var ota  =(row[C.ota-1]  ||'').toString().trim();
+    if (!ota.startsWith('SCB')) continue;
+    var guest =(row[C.guest-1] ||'').toString().trim();
+    var status=(row[C.status-1]||'').toString().trim();
+    if (guest!=='รอ match') continue;   // ถูก match ไปแล้วโดย matchSCBtoOTA/matchBookingComSCB
+    if (status.indexOf('⚠️')===0) continue; // ถูก flag ไว้ให้ตรวจสอบมือแล้ว รอบก่อนหน้า
+
+    var scbAmt =fmtAmt(row[C.net-1]);
+    var scbDate=normalizeDate(row[C.date-1]);
+
+    var candidates=extranetBookings.filter(function(b){
+      var diffCi=Math.abs(Math.round((new Date(scbDate)-new Date(b.ci))/86400000));
+      var diffCo=Math.abs(Math.round((new Date(scbDate)-new Date(b.co))/86400000));
+      return diffCi<=WINDOW_DAYS || diffCo<=WINDOW_DAYS;
+    });
+
+    if (candidates.length===1) {
+      var b=candidates[0];
+      var nts=nightsBetween(b.ci,b.co);
+      var note='✅ Direct/Extranet Pay | '+b.guest+' resId='+b.resId+' | NET ฿'+scbAmt+' | Value Date: '+scbDate;
+      sheet.getRange(r+2,C.guest,1,1).setValue(b.guest);
+      sheet.getRange(r+2,C.room,1,1).setValue(b.room);
+      sheet.getRange(r+2,C.ci,1,1).setValue(b.ci);
+      sheet.getRange(r+2,C.co,1,1).setValue(b.co);
+      if (nts) sheet.getRange(r+2,C.nights,1,1).setValue(nts);
+      sheet.getRange(r+2,C.status,1,1).setValue('✅ Matched - Direct/Extranet');
+      sheet.getRange(r+2,C.notes,1,1).setValue(note);
+      extranetBookings.splice(extranetBookings.indexOf(b),1); // กันแถว SCB อื่นแย่ง match booking เดียวกันซ้ำ
+      matched++;
+    } else if (candidates.length>1) {
+      sheet.getRange(r+2,C.status,1,1)
+        .setValue('⚠️ รอตรวจสอบ Direct/Extranet ('+candidates.length+' candidates)');
+      flagged++;
+    }
+  }
+  Logger.log('matchExtranetSCB: '+matched+' matched, '+flagged+' flagged for manual review');
+  if (matched>0 || flagged>0) {
+    SpreadsheetApp.getActiveSpreadsheet()
+      .toast('Direct/Extranet match: '+matched+' matched, '+flagged+' ต้องตรวจสอบมือ','Done',5);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
