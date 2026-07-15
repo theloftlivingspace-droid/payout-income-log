@@ -3094,10 +3094,15 @@ function matchSCBtoOTA(sheet) {
 
   // Build Airbnb batches keyed by NET SUM (not gross total)
   // Group rows by payout date window (same day) → sum nets
-  var airbnbByDate={};  // date → [{conf,guest,net,total}]
+  // NOTE: rowIndex (1-based sheet row) is tracked on every entry so that once a
+  // batch is consumed by a successful SCB match, the ORIGINAL Airbnb/Trip.com/
+  // Expedia row(s) can be deleted too — otherwise they sit forever with a stale
+  // "รอ..." status even though the money has already been reconciled on the SCB
+  // side (this was the root cause of rows staying stuck in Pending Match).
+  var airbnbByDate={};  // date → [{conf,guest,net,total,rowIndex}]
   // dedup by bookingId — ไม่ใช่ confCode เพราะ conf เดียวกันมีหลาย payout ได้ (multi-payout)
   var _airbnbSeenBid={};
-  data.forEach(function(row) {
+  data.forEach(function(row,i) {
     var ota=(row[C.ota-1]||'').toString().trim();
     if (ota!=='Airbnb') return;
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
@@ -3114,7 +3119,8 @@ function matchSCBtoOTA(sheet) {
       conf:conf,
       guest:(row[C.guest-1]||'').toString(),
       net:net, total:bt,
-      netStr:fmtAmt(row[C.net-1])
+      netStr:fmtAmt(row[C.net-1]),
+      rowIndex:i+2
     });
   });
 
@@ -3133,6 +3139,7 @@ function matchSCBtoOTA(sheet) {
       guests:rows.map(function(r){return r.guest;}),
       confs: rows.map(function(r){return r.conf;}),
       nets:  rows.map(function(r){return r.netStr;}),
+      rowIndices: rows.map(function(r){return r.rowIndex;}),
       date:dt, total:netSumStr
     };
     // Also key by gross total for single-booking payouts
@@ -3148,6 +3155,7 @@ function matchSCBtoOTA(sheet) {
       if (!airbnbBatches[ikey]) {
         airbnbBatches[ikey]={
           guests:[r.guest], confs:[r.conf], nets:[r.netStr],
+          rowIndices:[r.rowIndex],
           date:dt, total:r.netStr
         };
       }
@@ -3168,6 +3176,7 @@ function matchSCBtoOTA(sheet) {
             guests:combined.map(function(r){return r.guest;}),
             confs: combined.map(function(r){return r.conf;}),
             nets:  combined.map(function(r){return r.netStr;}),
+            rowIndices: combined.map(function(r){return r.rowIndex;}),
             date:allDates[di], total:comboStr
           };
         }
@@ -3178,7 +3187,7 @@ function matchSCBtoOTA(sheet) {
   var tripNets={}, expediaNets={};
   // collect individual rows by month+OTA
   var tripByMonth={}, expedByMonth={};
-  data.forEach(function(row) {
+  data.forEach(function(row,i) {
     var ota=(row[C.ota-1]||'').toString().trim();
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
@@ -3188,24 +3197,27 @@ function matchSCBtoOTA(sheet) {
     var entry={
       guest:(row[C.guest-1]||'').toString(),
       bid:  (row[C.bid-1]||'').toString(),
-      net:  net, netStr:fmtAmt(row[C.net-1])
+      net:  net, netStr:fmtAmt(row[C.net-1]),
+      rowIndex:i+2
     };
     if (ota==='Trip.com') {
       // individual net key (same as before)
       var nk=fmtAmt(row[C.net-1])+'|'+mon+'|Trip.com';
-      if (!tripNets[nk]) tripNets[nk]={guests:[],bids:[],nets:[],total:fmtAmt(row[C.net-1]),ota:'Trip.com'};
+      if (!tripNets[nk]) tripNets[nk]={guests:[],bids:[],nets:[],rowIndices:[],total:fmtAmt(row[C.net-1]),ota:'Trip.com'};
       tripNets[nk].guests.push(entry.guest);
       tripNets[nk].bids.push(entry.bid);
       tripNets[nk].nets.push(entry.netStr);
+      tripNets[nk].rowIndices.push(entry.rowIndex);
       // accumulate for batch sum
       if (!tripByMonth[mon]) tripByMonth[mon]=[];
       tripByMonth[mon].push(entry);
     } else if (ota==='Expedia') {
       var ek=fmtAmt(row[C.net-1])+'|'+mon+'|Expedia';
-      if (!expediaNets[ek]) expediaNets[ek]={guests:[],bids:[],nets:[],total:fmtAmt(row[C.net-1]),ota:'Expedia'};
+      if (!expediaNets[ek]) expediaNets[ek]={guests:[],bids:[],nets:[],rowIndices:[],total:fmtAmt(row[C.net-1]),ota:'Expedia'};
       expediaNets[ek].guests.push(entry.guest);
       expediaNets[ek].bids.push(entry.bid);
       expediaNets[ek].nets.push(entry.netStr);
+      expediaNets[ek].rowIndices.push(entry.rowIndex);
       if (!expedByMonth[mon]) expedByMonth[mon]=[];
       expedByMonth[mon].push(entry);
     }
@@ -3223,6 +3235,7 @@ function matchSCBtoOTA(sheet) {
         guests:rows.map(function(r){return r.guest;}),
         bids:  rows.map(function(r){return r.bid;}),
         nets:  rows.map(function(r){return r.netStr;}),
+        rowIndices: rows.map(function(r){return r.rowIndex;}),
         total: sumStr, ota:'Trip.com'
       };
     }
@@ -3238,6 +3251,7 @@ function matchSCBtoOTA(sheet) {
         guests:rows.map(function(r){return r.guest;}),
         bids:  rows.map(function(r){return r.bid;}),
         nets:  rows.map(function(r){return r.netStr;}),
+        rowIndices: rows.map(function(r){return r.rowIndex;}),
         total: sumStr, ota:'Expedia'
       };
     }
@@ -3254,6 +3268,7 @@ function matchSCBtoOTA(sheet) {
   });
 
   var replacements=[];
+  var originalRowsToDelete=[];  // rowIndex(es) of the now-superseded Airbnb/Trip.com/Expedia rows
   data.forEach(function(row,i) {
     var ota  =(row[C.ota-1]  ||'').toString();
     var notes=(row[C.notes-1]||'').toString();
@@ -3282,6 +3297,7 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.confs,b.guests,b.nets,detailByConf,{},'Airbnb payout')});
+      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
       delete airbnbBatches[matchKey]; return;
     }
 
@@ -3295,6 +3311,7 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.bids,b.guests,b.nets,{},detailByBid,'Trip.com settlement')});
+      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
       delete tripNets[tripKeys[ti]]; return;
     }
 
@@ -3307,16 +3324,38 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
+      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
       delete expediaNets[expKeys[ei]]; return;
     }
   });
 
-  Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand');
-  replacements.sort(function(a,b){ return b.deleteRow-a.deleteRow; });
-  replacements.forEach(function(rep) {
-    sheet.deleteRow(rep.deleteRow);
-    var insertAt=rep.deleteRow;
-    rep.insertRows.forEach(function(r,idx) {
+  Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand, '+originalRowsToDelete.length+' original OTA rows to retire');
+
+  // Combine BOTH kinds of row-index-changing operations (SCB delete+insert, and
+  // plain delete of the now-superseded original OTA rows) into one list, sorted
+  // by row number descending, so that operating top-down never invalidates the
+  // row numbers of not-yet-processed operations. De-dupe in case a row was ever
+  // referenced by more than one matched batch key (defensive; shouldn't normally
+  // happen since each map entry is deleted once consumed).
+  var seenRow={};
+  var ops=[];
+  replacements.forEach(function(rep){
+    if (seenRow[rep.deleteRow]) return;
+    seenRow[rep.deleteRow]=true;
+    ops.push({row:rep.deleteRow, type:'scb', rep:rep});
+  });
+  originalRowsToDelete.forEach(function(r){
+    if (seenRow[r]) return;
+    seenRow[r]=true;
+    ops.push({row:r, type:'plain'});
+  });
+  ops.sort(function(a,b){ return b.row-a.row; });
+
+  ops.forEach(function(op) {
+    sheet.deleteRow(op.row);
+    if (op.type!=='scb') return;
+    var insertAt=op.row;
+    op.rep.insertRows.forEach(function(r,idx) {
       sheet.insertRowBefore(insertAt+idx);
       var ri=insertAt+idx;
       sheet.getRange(ri,1,1,HEADERS.length).setValues([[
