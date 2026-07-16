@@ -507,6 +507,14 @@ function dailyEmailSync() {
   });
 
   newRows.forEach(function(r){ appendRow(sheet,r); });
+
+  // 363/Mycondo doesn't sync with Little Hotelier, so its Airbnb bookings
+  // never reach Sheet1 the way every other room's do. Parses Airbnb's
+  // "Reservation confirmed" host email (sent at booking time) instead.
+  // See Airbnb363ToSheet1.gs for details — folded in here rather than a
+  // separate trigger since dailyEmailSync already runs hourly.
+  try { syncAirbnb363Reservations(); } catch(e) { Logger.log('ERR syncAirbnb363Reservations: '+e.message); }
+
   matchSCBtoOTA(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports(finReportSince);
