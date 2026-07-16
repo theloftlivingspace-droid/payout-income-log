@@ -1862,6 +1862,61 @@ function manualMatchSCBtoTrip(){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ONE-TIME CLEANUP: retire pending Trip.com rows that were already
+// settled before the manualMatchSCBtoTrip() row-retirement fix went in.
+// Finds every Trip.com booking id referenced inside a ✅ Matched / ↳ SCB
+// row's Conf. Code column, then deletes any pending Trip.com row (not
+// itself a ✅/↳ row) whose Booking ID matches one of those ids.
+// Safe to re-run — if there's nothing stale left, it deletes 0 rows.
+// ═══════════════════════════════════════════════════════════════
+function cleanupStaleMatchedTripPendingRows() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('cleanupStaleMatchedTripPendingRows: sheet not found'); return; }
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  // Collect every Trip.com booking id that appears inside a ✅/↳ SCB row's
+  // Conf. Code column (single-booking rows hold the raw id; multi-booking
+  // total rows join several ids with ', ').
+  var settledIds = {};
+  data.forEach(function(row) {
+    var ota   = (row[C.ota-1]   || '').toString();
+    var notes = (row[C.notes-1] || '').toString();
+    if (!ota.startsWith('SCB')) return;
+    if (notes.indexOf('✅') !== 0 && notes.indexOf('↳') !== 0) return;
+    var conf = (row[C.conf-1] || '').toString();
+    conf.split(',').forEach(function(c) {
+      c = c.trim();
+      if (c) settledIds[c] = true;
+    });
+  });
+
+  // Find stale pending Trip.com rows referencing those same ids.
+  var toDelete = [];
+  var preview  = [];
+  data.forEach(function(row, i) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    if (ota !== 'Trip.com') return;
+    var status = (row[C.status-1] || '').toString();
+    if (status.indexOf('✅') === 0 || status.indexOf('↳') === 0) return; // it's a matched row itself, skip
+    var bid = (row[C.bid-1] || '').toString().trim();
+    if (bid && settledIds[bid]) {
+      toDelete.push(i + 2);
+      preview.push(bid + ' | ' + (row[C.guest-1]||'') + ' | ' + (row[C.net-1]||''));
+    }
+  });
+
+  toDelete.sort(function(a, b) { return b - a; });
+  toDelete.forEach(function(r) { sheet.deleteRow(r); });
+
+  Logger.log('cleanupStaleMatchedTripPendingRows: deleted ' + toDelete.length + ' stale pending rows');
+  Logger.log(preview.join('\n'));
+  SpreadsheetApp.getActiveSpreadsheet().toast('Cleanup: ลบ ' + toDelete.length + ' stale pending rows', 'Done', 5);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DIAGNOSTIC: dump every row related to the 2026-07-04 SCB-17560.24
 // payout (by bookingId, conf code, or guest name) as JSON so it can be
 // inspected without direct sheet access. Run once, paste the log output.
