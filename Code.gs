@@ -1777,7 +1777,13 @@ function manualMatchSCBtoTrip(){
     scbIndex[(row[C.bid-1]||'').toString().trim()]=i;
   });
 
+  // Pass 1: plan only — figure out which SCB row each batch replaces, and
+  // which now-superseded pending Trip.com rows ("รอ monthly settlement")
+  // need to be retired. Nothing is written to the sheet yet.
+  var scbReplacements=[];       // {row, inserts}
+  var pendingRowsToDelete=[];   // sheet row numbers of stale "รอ..." rows
   var matched=0;
+
   TRIP_MANUAL_BATCHES.forEach(function(batch){
     var scbRowIdx=scbIndex[batch.scbId];
     if (scbRowIdx===undefined){ Logger.log('SCB not found: '+batch.scbId); return; }
@@ -1800,24 +1806,58 @@ function manualMatchSCBtoTrip(){
       batch.tripIds.map(function(b){ return tripIndex[b]?tripIndex[b].net.toFixed(2):'0'; }),
       {},detailByBid,'Trip.com settlement');
 
-    var sr=scbRowIdx+2;
-    sheet.deleteRow(sr);
-    inserts.forEach(function(r,idx){
-      sheet.insertRowBefore(sr+idx);
-      sheet.getRange(sr+idx,1,1,HEADERS.length).setValues([[
+    scbReplacements.push({row:scbRowIdx+2, inserts:inserts});
+
+    // Retire the original pending row for each booking this SCB payout
+    // just settled — otherwise it sits stuck in Pending Match forever
+    // even though the money's already reconciled.
+    batch.tripIds.forEach(function(bid){
+      if (tripIndex[bid]) pendingRowsToDelete.push(tripIndex[bid].rowIdx+2);
+    });
+
+    matched++;
+  });
+
+  // Pass 2: combine both kinds of row-index-changing operations (SCB
+  // replace, plain delete of stale pending rows) into one list, sorted by
+  // row number descending, and execute top-down — same pattern matchSCBtoOTA
+  // uses — so processing one operation never invalidates the row numbers
+  // of the ones still queued.
+  var seenRow={};
+  var ops=[];
+  scbReplacements.forEach(function(rep){
+    if (seenRow[rep.row]) return;
+    seenRow[rep.row]=true;
+    ops.push({row:rep.row, type:'scb', rep:rep});
+  });
+  pendingRowsToDelete.forEach(function(r){
+    if (seenRow[r]) return;
+    seenRow[r]=true;
+    ops.push({row:r, type:'plain'});
+  });
+  ops.sort(function(a,b){ return b.row-a.row; });
+
+  ops.forEach(function(op){
+    sheet.deleteRow(op.row);
+    if (op.type!=='scb') return;
+    var insertAt=op.row;
+    op.rep.inserts.forEach(function(r,idx){
+      sheet.insertRowBefore(insertAt+idx);
+      var ri=insertAt+idx;
+      sheet.getRange(ri,1,1,HEADERS.length).setValues([[
         r.date,r.ota,r.bookingId,r.confCode,
         r.guest,r.room,r.checkIn,r.checkOut,r.nights,
         r.total,r.commission,r.net,r.status,r.notes
       ]]);
       var bg=(r._isTotal||r._isSingle)?SCB_TOTAL_BG:SCB_SUB_BG;
-      sheet.getRange(sr+idx,1,1,HEADERS.length).setBackground(bg);
-      if (r._isTotal||r._isSingle) sheet.getRange(sr+idx,1,1,HEADERS.length).setFontWeight('bold');
-      else sheet.getRange(sr+idx,1,1,HEADERS.length).setFontStyle('italic').setFontColor('#444444');
-      sheet.getRange(sr+idx,10,1,3).setNumberFormat('#,##0.00');
+      sheet.getRange(ri,1,1,HEADERS.length).setBackground(bg);
+      if (r._isTotal||r._isSingle) sheet.getRange(ri,1,1,HEADERS.length).setFontWeight('bold');
+      else sheet.getRange(ri,1,1,HEADERS.length).setFontStyle('italic').setFontColor('#444444');
+      sheet.getRange(ri,10,1,3).setNumberFormat('#,##0.00');
     });
-    matched++;
   });
-  Logger.log('manualMatchSCBtoTrip: '+matched+' matched');
+
+  Logger.log('manualMatchSCBtoTrip: '+matched+' matched, '+pendingRowsToDelete.length+' stale pending rows retired');
   SpreadsheetApp.getActiveSpreadsheet().toast('Match Trip.com: '+matched+' รายการ','Done',4);
 }
 
