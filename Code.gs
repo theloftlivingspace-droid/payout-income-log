@@ -1960,9 +1960,42 @@ function cleanupStaleMatchedTripPendingRows() {
 // that get matched later (status flips to ✅ Matched, or the row gets
 // deleted by matchSCBtoOTA) simply stop showing up here on the next run.
 // ═══════════════════════════════════════════════════════════════
-var AIRBNB_STALE_DAYS   = 5;
+var AIRBNB_STALE_DAYS   = 30;
 var AIRBNB_STALE_MARK   = '⚠️ ยังไม่เจอ SCB match';
 var AIRBNB_STALE_BG     = '#fff3cd';
+
+// ═══════════════════════════════════════════════════════════════
+// ONE-TIME: clear the ⚠️ warnings flagStaleUnmatchedAirbnbPayouts() added
+// while AIRBNB_STALE_DAYS was still 5 — confirmed false positives (money
+// had genuinely arrived for all of them; the SCB-matching algorithm just
+// never paired them up, likely due to Airbnb batch-payout complexity).
+// Strips the warning text back out of the notes column and restores the
+// normal row background via stylePayoutLog(). Run once.
+// ═══════════════════════════════════════════════════════════════
+function clearFalsePositiveAirbnbFlags() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('clearFalsePositiveAirbnbFlags: sheet not found'); return; }
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var markRe = / \| ⚠️ ยังไม่เจอ SCB match \(\d+ วัน\)/g;
+  var cleared = 0;
+
+  data.forEach(function(row, i) {
+    var notes = (row[C.notes-1] || '').toString();
+    if (notes.indexOf(AIRBNB_STALE_MARK) < 0) return;
+    var cleanNotes = notes.replace(markRe, '');
+    sheet.getRange(i + 2, C.notes).setValue(cleanNotes);
+    cleared++;
+  });
+
+  Logger.log('clearFalsePositiveAirbnbFlags: cleared ' + cleared + ' rows');
+  SpreadsheetApp.getActiveSpreadsheet().toast('Cleared ' + cleared + ' false-positive Airbnb flags', 'Done', 5);
+
+  stylePayoutLog();  // restore normal row backgrounds
+}
 
 function flagStaleUnmatchedAirbnbPayouts() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
