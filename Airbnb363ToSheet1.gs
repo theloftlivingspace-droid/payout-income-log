@@ -26,7 +26,7 @@
  */
 
 const AIRBNB_363_LISTING_IDS = ['17444947', '18163498'];
-const AIRBNB_363_ROOM = '363';
+const AIRBNB_363_ROOM = '363 Mycondo';
 const SRC_BOOKING_SHEET_NAME = 'Sheet1';
 const AIRBNB_363_SEARCH_QUERY = 'from:automated@airbnb.com subject:"Reservation confirmed" newer_than:90d';
 
@@ -50,7 +50,7 @@ function syncAirbnb363Reservations() {
     co:      header.indexOf('เช็คเอาท์'),
     channel: header.indexOf('Channel'),
     resId:   header.indexOf('ResId'),
-    note:    header.indexOf('Note')
+    bookDate: header.indexOf('วันจอง')
   };
   ['room','guest','ci','co','channel','resId'].forEach(function(k) {
     if (col[k] < 0) throw new Error('Sheet1 ไม่มีคอลัมน์ที่ต้องใช้ (key: ' + k + ')');
@@ -83,7 +83,7 @@ function syncAirbnb363Reservations() {
       row[col.co]      = parsed.checkout;
       row[col.channel] = 'Airbnb';
       row[col.resId]   = resId;
-      if (col.note >= 0) row[col.note] = 'auto: 363 Mycondo (' + parsed.confCode + ')';
+      if (col.bookDate >= 0) row[col.bookDate] = parsed.bookDate;
       newRows.push(row);
     });
   });
@@ -143,7 +143,12 @@ function parseAirbnb363ReservationEmail_(msg) {
   var guest = guestMatch ? guestMatch[1].trim() : '';
   if (!guest) return null;
 
-  return { guest: guest, checkin: checkin, checkout: checkout, confCode: confCode };
+  // วันจอง = the date this "Reservation confirmed" email itself arrived,
+  // same convention Sheet1 already uses elsewhere (guest always books
+  // before the stay, so the email's own receipt date IS the booking date).
+  var bookDate = Utilities.formatDate(emailDate, 'Asia/Bangkok', 'yyyy-MM-dd');
+
+  return { guest: guest, checkin: checkin, checkout: checkout, confCode: confCode, bookDate: bookDate };
 }
 
 /**
