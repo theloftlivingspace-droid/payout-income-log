@@ -151,7 +151,8 @@ var MANUAL_ROOM_FIXES = [
   { conf:'HMQDZAHYBE', room:'205' },  // Egor Lebedev / Airbnb
   // ── ยกเลิกการจอง ────────────────────────────────────────────
   { bid:'2472443860',        room:'ยกเลิก' },  // JELLUM, JOHN / Expedia
-  { bid:'2439271536',        room:'ยกเลิก' },  // doungprasert, Khajonyod / Expedia
+  // doungprasert, Khajonyod (2439271536) — confirmed NOT cancelled: Expedia booking email +
+  // SCB payout ฿1,066.23 (2026-04-28) both confirm real stay. Removed incorrect ยกเลิก flag 2026-07-17.
   { bid:'1622924258510520',  room:'ยกเลิก' },  // PONPIAN/NAPADA / Trip.com
   // ── Guest name fallback (SCB total rows ที่ guest = combined names) ──
   { guest:'Harley Bowman',                     room:'363' },  // Mycondo
@@ -233,6 +234,7 @@ function quickReformat() {
   sortPayoutByOTA(sheet);
   stylePayoutLog();
   flagStaleUnmatchedAirbnbPayouts();
+  cleanupStalePendingRows();
   rebuildBankLedger();
   exportToGitHub();
   SpreadsheetApp.getActiveSpreadsheet().toast('QuickReformat เสร็จ | GitHub synced', 'Done', 4);
@@ -275,6 +277,55 @@ function cleanupDuplicateExtRows() {
   toDelete.sort(function(a,b){return b-a;});
   toDelete.forEach(function(r){ sheet.deleteRow(r); });
   Logger.log('cleanupDuplicateExtRows: deleted '+toDelete.length+' dup rows');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLEANUP STALE PENDING ROWS
+// เมื่อเงินเข้า SCB matched แล้ว (buildSCBRows สร้างแถวใหม่สถานะ
+// '✅ Matched - ...') แถว pending เดิมของ booking เดียวกัน (conf+net
+// ตรงกัน) ที่ยังค้างสถานะ "รอ..." อยู่ ต้องถูกลบทิ้ง ไม่งั้นจะซ้ำ
+// (นับรายได้ซ้ำ + โชว์เป็น unmatched ทั้งที่จริงจ่ายแล้ว)
+// รันหลัง buildSCBRows ทุกครั้งใน fullRebuild/quickReformat/dailyEmailSync
+// ═══════════════════════════════════════════════════════════════
+var PENDING_STATUS_PREFIXES = [
+  'PrePaid - รอ', 'Net Rate - รอ', 'หักคืนแขก', 'โอนแล้ว (Adjustment)'
+];
+function isPendingStatus_(status) {
+  status = (status||'').toString();
+  return PENDING_STATUS_PREFIXES.some(function(p){ return status.indexOf(p) === 0; });
+}
+function cleanupStalePendingRows() {
+  var sheet = setupSheet();
+  var last  = sheet.getLastRow();
+  if (last < 2) return 0;
+  var data  = sheet.getRange(2,1,last-1,HEADERS.length).getValues();
+
+  // index matched rows by conf + net (rounded to satang)
+  var matchedKeys = {};
+  for (var i=0;i<data.length;i++) {
+    var status = (data[i][C.status-1]||'').toString();
+    if (status.indexOf('✅ Matched') !== 0) continue;
+    (data[i][C.conf-1]||'').toString().split(',').forEach(function(rawConf){
+      var conf = rawConf.trim();
+      if (!conf) return;
+      var net = Math.round(parseAmt(data[i][C.net-1])*100)/100;
+      matchedKeys[conf+'|'+net] = true;
+    });
+  }
+
+  var toDelete = [];
+  for (var j=0;j<data.length;j++) {
+    var status = (data[j][C.status-1]||'').toString();
+    if (!isPendingStatus_(status)) continue;
+    var conf = (data[j][C.conf-1]||'').toString().trim();
+    if (!conf) continue;
+    var net  = Math.round(parseAmt(data[j][C.net-1])*100)/100;
+    if (matchedKeys[conf+'|'+net]) toDelete.push(j+2);
+  }
+  toDelete.sort(function(a,b){return b-a;});
+  toDelete.forEach(function(r){ sheet.deleteRow(r); });
+  Logger.log('cleanupStalePendingRows: deleted '+toDelete.length+' stale pending rows already matched in SCB');
+  return toDelete.length;
 }
 
 // GAS caps a single execution at 6 min (consumer) / 30 min (Workspace).
@@ -444,6 +495,7 @@ function fullRebuild() {
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
+  cleanupStalePendingRows();
   rebuildBankLedger();
   exportToGitHub();
 
@@ -529,6 +581,7 @@ function dailyEmailSync() {
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
+  cleanupStalePendingRows();
   rebuildBankLedger();
 
   exportToGitHub();
