@@ -164,7 +164,8 @@ var MANUAL_ROOM_FIXES = [
   { guest:'SM Muhaimen',                        room:'203' },  // conf HMTQJXECS9 (cancel)
   { guest:'妘芮 林',                             room:'103' },  // standalone
   { guest:'Siren Wills',                        room:'203' },  // standalone
-  // ── ยกเลิกก่อนเช็คอิน แต่ Airbnb โอน cancellation payout มา ──────
+  // ── Room reassignment fix 2026-07-17 ────────────────────────────
+  { conf:'2506573631', room:'214', force:true },  // Antov, Pranee → 214 (was 113)
   { conf:'HMFTY4YTTK', room:'204' },  // 佰顺 王 / จอง 3 คืน 07-05→07-08 ยกเลิกก่อนเข้าพัก (ไม่ใช่ occupancy จริง)
 ];
 
@@ -3244,10 +3245,11 @@ function applyManualRoomFixes() {
       var isMultiCur = curRoom.indexOf(',') >= 0;
 
       // skip only if: current room is valid single AND fix is also single AND room is a known valid room
-      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi, OR room not in known list
+      // always overwrite if: room is '?' / invalid, OR fix is multi, OR current is wrong multi,
+      // OR room not in known list, OR fix.force===true (explicit reassignment override)
       var KNOWN_ROOMS = ['103','108','113','203','204','205','210','214','300','363'];
       var curRoomKnown = KNOWN_ROOMS.indexOf(curRoom) >= 0;
-      if (isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur) continue;
+      if (isValidRoom(curRoom) && curRoomKnown && !isMultiFix && !isMultiCur && !fix.force) continue;
 
       if (curRoom === fix.room) break; // already correct, no write needed
       paySheet.getRange(i + 2, pRoom + 1).setValue(fix.room);
