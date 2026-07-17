@@ -1787,10 +1787,10 @@ function manualMatchSCBtoTrip(){
   });
 
   // Pass 1: plan only — figure out which SCB row each batch replaces, and
-  // which now-superseded pending Trip.com rows ("รอ monthly settlement")
-  // need to be retired. Nothing is written to the sheet yet.
+  // which now-settled pending Trip.com rows ("รอ monthly settlement") need
+  // to be marked โอนแล้ว in place. Nothing is written to the sheet yet.
   var scbReplacements=[];       // {row, inserts}
-  var pendingRowsToDelete=[];   // sheet row numbers of stale "รอ..." rows
+  var pendingRowsToUpdate=[];   // {row, note} for rows to mark โอนแล้ว
   var matched=0;
 
   TRIP_MANUAL_BATCHES.forEach(function(batch){
@@ -1817,21 +1817,25 @@ function manualMatchSCBtoTrip(){
 
     scbReplacements.push({row:scbRowIdx+2, inserts:inserts});
 
-    // Retire the original pending row for each booking this SCB payout
-    // just settled — otherwise it sits stuck in Pending Match forever
-    // even though the money's already reconciled.
+    // Mark the original pending row for each booking this SCB payout just
+    // settled — kept in the sheet, status flipped to โอนแล้ว, not deleted.
+    // The ✅ Matched SCB row above still exists for rebuildBankLedger()/
+    // Dashboard; getInvoiceToCreate_() already skips a row whose Conf. Code
+    // shows up on a 'Matched' row elsewhere, so this can't double-invoice.
+    var note='โอนแล้ว | SCB Trip.com settlement ref '+scbBid+' | Value Date: '+scbDate;
     batch.tripIds.forEach(function(bid){
-      if (tripIndex[bid]) pendingRowsToDelete.push(tripIndex[bid].rowIdx+2);
+      if (tripIndex[bid]) pendingRowsToUpdate.push({row:tripIndex[bid].rowIdx+2, note:note});
     });
 
     matched++;
   });
 
-  // Pass 2: combine both kinds of row-index-changing operations (SCB
-  // replace, plain delete of stale pending rows) into one list, sorted by
-  // row number descending, and execute top-down — same pattern matchSCBtoOTA
-  // uses — so processing one operation never invalidates the row numbers
-  // of the ones still queued.
+  // Pass 2: combine both kinds of operations (SCB replace, in-place status
+  // update of settled pending rows) into one list, sorted by row number
+  // descending, and execute top-down — same pattern matchSCBtoOTA uses —
+  // so processing one operation never invalidates the row numbers of the
+  // ones still queued. Update ops don't change row count so ordering among
+  // themselves doesn't matter.
   var seenRow={};
   var ops=[];
   scbReplacements.forEach(function(rep){
@@ -1839,16 +1843,22 @@ function manualMatchSCBtoTrip(){
     seenRow[rep.row]=true;
     ops.push({row:rep.row, type:'scb', rep:rep});
   });
-  pendingRowsToDelete.forEach(function(r){
-    if (seenRow[r]) return;
-    seenRow[r]=true;
-    ops.push({row:r, type:'plain'});
+  pendingRowsToUpdate.forEach(function(u){
+    if (seenRow[u.row]) return;
+    seenRow[u.row]=true;
+    ops.push({row:u.row, type:'update', note:u.note});
   });
   ops.sort(function(a,b){ return b.row-a.row; });
 
   ops.forEach(function(op){
+    if (op.type==='update'){
+      sheet.getRange(op.row, C.status).setValue('โอนแล้ว');
+      var notesCell=sheet.getRange(op.row, C.notes);
+      var existing=(notesCell.getValue()||'').toString();
+      notesCell.setValue(existing ? (existing+' | '+op.note) : op.note);
+      return;
+    }
     sheet.deleteRow(op.row);
-    if (op.type!=='scb') return;
     var insertAt=op.row;
     op.rep.inserts.forEach(function(r,idx){
       sheet.insertRowBefore(insertAt+idx);
@@ -1866,7 +1876,7 @@ function manualMatchSCBtoTrip(){
     });
   });
 
-  Logger.log('manualMatchSCBtoTrip: '+matched+' matched, '+pendingRowsToDelete.length+' stale pending rows retired');
+  Logger.log('manualMatchSCBtoTrip: '+matched+' matched, '+pendingRowsToUpdate.length+' pending rows marked โอนแล้ว');
   SpreadsheetApp.getActiveSpreadsheet().toast('Match Trip.com: '+matched+' รายการ','Done',4);
 }
 
@@ -1888,41 +1898,50 @@ function cleanupStaleMatchedTripPendingRows() {
 
   // Collect every Trip.com booking id that appears inside a ✅/↳ SCB row's
   // Conf. Code column (single-booking rows hold the raw id; multi-booking
-  // total rows join several ids with ', ').
+  // total rows join several ids with ', '), plus that row's match info for
+  // the note we'll attach.
   var settledIds = {};
   data.forEach(function(row) {
     var ota   = (row[C.ota-1]   || '').toString();
     var notes = (row[C.notes-1] || '').toString();
     if (!ota.startsWith('SCB')) return;
     if (notes.indexOf('✅') !== 0 && notes.indexOf('↳') !== 0) return;
+    var bid  = (row[C.bid-1]  || '').toString().trim();
+    var date = normalizeDate(row[C.date-1] || '');
     var conf = (row[C.conf-1] || '').toString();
     conf.split(',').forEach(function(c) {
       c = c.trim();
-      if (c) settledIds[c] = true;
+      if (c) settledIds[c] = 'โอนแล้ว | SCB Trip.com settlement ref ' + bid + ' | Value Date: ' + date;
     });
   });
 
-  // Find stale pending Trip.com rows referencing those same ids.
-  var toDelete = [];
+  // Find pending Trip.com rows referencing those same ids and mark them
+  // โอนแล้ว in place (never deleted — kept for record/re-check purposes).
+  var toUpdate = [];
   var preview  = [];
   data.forEach(function(row, i) {
     var ota = (row[C.ota-1] || '').toString().trim();
     if (ota !== 'Trip.com') return;
     var status = (row[C.status-1] || '').toString();
     if (status.indexOf('✅') === 0 || status.indexOf('↳') === 0) return; // it's a matched row itself, skip
+    if (status.indexOf('โอนแล้ว') === 0) return;                        // already marked, skip
     var bid = (row[C.bid-1] || '').toString().trim();
     if (bid && settledIds[bid]) {
-      toDelete.push(i + 2);
+      toUpdate.push({row: i + 2, note: settledIds[bid]});
       preview.push(bid + ' | ' + (row[C.guest-1]||'') + ' | ' + (row[C.net-1]||''));
     }
   });
 
-  toDelete.sort(function(a, b) { return b - a; });
-  toDelete.forEach(function(r) { sheet.deleteRow(r); });
+  toUpdate.forEach(function(u) {
+    sheet.getRange(u.row, C.status).setValue('โอนแล้ว');
+    var notesCell = sheet.getRange(u.row, C.notes);
+    var existing = (notesCell.getValue() || '').toString();
+    notesCell.setValue(existing ? (existing + ' | ' + u.note) : u.note);
+  });
 
-  Logger.log('cleanupStaleMatchedTripPendingRows: deleted ' + toDelete.length + ' stale pending rows');
+  Logger.log('cleanupStaleMatchedTripPendingRows: marked ' + toUpdate.length + ' rows โอนแล้ว');
   Logger.log(preview.join('\n'));
-  SpreadsheetApp.getActiveSpreadsheet().toast('Cleanup: ลบ ' + toDelete.length + ' stale pending rows', 'Done', 5);
+  SpreadsheetApp.getActiveSpreadsheet().toast('Cleanup: mark โอนแล้ว ' + toUpdate.length + ' rows', 'Done', 5);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2387,10 +2406,15 @@ function matchBookingComSCB(mapEntries) {
     var insertRows = buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
       bids, guests, nets, {}, detailByBid, 'Booking.com remittance');
 
-    // Combine the SCB row (delete+expand) with the original Booking.com row(s)
-    // being retired (plain delete) into one descending-row-order pass, so row
-    // numbers never get invalidated mid-run.
+    // Combine the SCB row (delete+expand) with marking the original
+    // Booking.com row(s) as settled — in place, not deleted — into one
+    // descending-row-order pass, so row numbers never get invalidated
+    // mid-run. The ✅ Matched SCB row still gets created for
+    // rebuildBankLedger()/Dashboard; getInvoiceToCreate_() already skips
+    // any row whose Conf. Code shows up on a 'Matched' row elsewhere, so
+    // keeping both rows can't cause a duplicate invoice.
     var sr = scb.rowIdx + 2;
+    var matchNote = 'โอนแล้ว | SCB Booking.com remittance ref ' + scbBid + ' | Value Date: ' + scbDate;
     var originalRows = bids
       .map(function(b) { return bkIndex[b] ? bkIndex[b].rowIndex : null; })
       .filter(function(r) { return r && r !== sr; });
@@ -2401,13 +2425,19 @@ function matchBookingComSCB(mapEntries) {
     originalRows.forEach(function(r) {
       if (seenRow[r]) return;
       seenRow[r] = true;
-      ops.push({ row: r, type: 'plain' });
+      ops.push({ row: r, type: 'update' });
     });
     ops.sort(function(a, b) { return b.row - a.row; });
 
     ops.forEach(function(op) {
+      if (op.type === 'update') {
+        sheet.getRange(op.row, C.status).setValue('โอนแล้ว');
+        var notesCell = sheet.getRange(op.row, C.notes);
+        var existing = (notesCell.getValue() || '').toString();
+        notesCell.setValue(existing ? (existing + ' | ' + matchNote) : matchNote);
+        return;
+      }
       sheet.deleteRow(op.row);
-      if (op.type !== 'scb') return;
       insertRows.forEach(function(r, idx) {
         sheet.insertRowBefore(op.row + idx);
         sheet.getRange(op.row+idx, 1, 1, HEADERS.length).setValues([[
@@ -2427,7 +2457,7 @@ function matchBookingComSCB(mapEntries) {
       });
     });
     matched++;
-    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', ') + ' (retired ' + originalRows.length + ' original row(s))');
+    Logger.log('matchBookingComSCB: matched ' + entry.scbId + ' → ' + bids.join(', ') + ' (marked โอนแล้ว on ' + originalRows.length + ' original row(s))');
   });
   Logger.log('matchBookingComSCB: ' + matched + ' SCB rows matched');
   if (matched > 0) SpreadsheetApp.getActiveSpreadsheet()
@@ -3574,7 +3604,13 @@ function matchSCBtoOTA(sheet) {
   });
 
   var replacements=[];
-  var originalRowsToDelete=[];  // rowIndex(es) of the now-superseded Airbnb/Trip.com/Expedia rows
+  // rowIndex(es) of the now-settled Airbnb/Trip.com/Expedia rows, kept in the
+  // sheet — NOT deleted. Each entry also carries the match note so the row can
+  // be updated in place (status → 'โอนแล้ว') instead of retired. The ✅ Matched
+  // SCB summary row is still created (rebuildBankLedger()/Dashboard read from
+  // it), and getInvoiceToCreate_() already skips any row whose Conf. Code
+  // shows up on a 'Matched' row elsewhere, so this can't double-invoice.
+  var originalRowsToUpdate=[];
   data.forEach(function(row,i) {
     var ota  =(row[C.ota-1]  ||'').toString();
     var notes=(row[C.notes-1]||'').toString();
@@ -3590,6 +3626,8 @@ function matchSCBtoOTA(sheet) {
     var acctM  =(row[C.notes-1]||'').toString().match(/x[\dX]+/);
     var scbAcct=acctM?acctM[0]:'x256221';
 
+    function noteFor(payType){ return 'โอนแล้ว | SCB '+payType+' ref '+scbBid+' | Value Date: '+scbDate; }
+
     var matchKey=null;
     Object.keys(airbnbBatches).forEach(function(k) {
       if (matchKey) return;
@@ -3603,7 +3641,8 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.confs,b.guests,b.nets,detailByConf,{},'Airbnb payout')});
-      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
+      var note=noteFor('Airbnb payout');
+      if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:note}); });
       delete airbnbBatches[matchKey]; return;
     }
 
@@ -3617,7 +3656,8 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.bids,b.guests,b.nets,{},detailByBid,'Trip.com settlement')});
-      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
+      var noteT=noteFor('Trip.com settlement');
+      if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:noteT}); });
       delete tripNets[tripKeys[ti]]; return;
     }
 
@@ -3630,19 +3670,20 @@ function matchSCBtoOTA(sheet) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
           b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
-      if (b.rowIndices) originalRowsToDelete=originalRowsToDelete.concat(b.rowIndices);
+      var noteE=noteFor('Expedia remittance');
+      if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:noteE}); });
       delete expediaNets[expKeys[ei]]; return;
     }
   });
 
-  Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand, '+originalRowsToDelete.length+' original OTA rows to retire');
+  Logger.log('matchSCBtoOTA: '+replacements.length+' SCB rows to expand, '+originalRowsToUpdate.length+' original OTA rows to mark โอนแล้ว');
 
-  // Combine BOTH kinds of row-index-changing operations (SCB delete+insert, and
-  // plain delete of the now-superseded original OTA rows) into one list, sorted
-  // by row number descending, so that operating top-down never invalidates the
-  // row numbers of not-yet-processed operations. De-dupe in case a row was ever
-  // referenced by more than one matched batch key (defensive; shouldn't normally
-  // happen since each map entry is deleted once consumed).
+  // Combine both kinds of operations (SCB delete+insert, and in-place status
+  // update of the now-settled original OTA rows) into one list, sorted by row
+  // number descending, so that operating top-down never invalidates the row
+  // numbers of not-yet-processed operations. Update ops don't change the row
+  // count so ordering among themselves doesn't matter — only relative to the
+  // 'scb' delete+insert ops. De-dupe defensively.
   var seenRow={};
   var ops=[];
   replacements.forEach(function(rep){
@@ -3650,16 +3691,22 @@ function matchSCBtoOTA(sheet) {
     seenRow[rep.deleteRow]=true;
     ops.push({row:rep.deleteRow, type:'scb', rep:rep});
   });
-  originalRowsToDelete.forEach(function(r){
-    if (seenRow[r]) return;
-    seenRow[r]=true;
-    ops.push({row:r, type:'plain'});
+  originalRowsToUpdate.forEach(function(u){
+    if (seenRow[u.row]) return;
+    seenRow[u.row]=true;
+    ops.push({row:u.row, type:'update', note:u.note});
   });
   ops.sort(function(a,b){ return b.row-a.row; });
 
   ops.forEach(function(op) {
+    if (op.type==='update') {
+      sheet.getRange(op.row, C.status).setValue('โอนแล้ว');
+      var notesCell=sheet.getRange(op.row, C.notes);
+      var existing=(notesCell.getValue()||'').toString();
+      notesCell.setValue(existing ? (existing+' | '+op.note) : op.note);
+      return;
+    }
     sheet.deleteRow(op.row);
-    if (op.type!=='scb') return;
     var insertAt=op.row;
     op.rep.insertRows.forEach(function(r,idx) {
       sheet.insertRowBefore(insertAt+idx);
