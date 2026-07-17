@@ -90,6 +90,11 @@ function syncAirbnb363Reservations() {
 
   if (newRows.length) {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, numCols).setValues(newRows);
+    // onEdit triggers (onEditStyleSheet1) don't fire for script-made edits
+    // like the setValues() above — only for manual edits through the UI —
+    // so style Sheet1 here explicitly, same reason other automated Sheet1
+    // writers in this codebase already have to.
+    try { styleSheet1(); } catch (e) { Logger.log('ERR styleSheet1 (from syncAirbnb363Reservations): ' + e.message); }
   }
   Logger.log('syncAirbnb363Reservations: เพิ่ม ' + newRows.length + ' booking ใหม่เข้า Sheet1');
   return newRows.length;
