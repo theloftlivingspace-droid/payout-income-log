@@ -2010,6 +2010,86 @@ function flagStaleUnmatchedAirbnbPayouts() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ONE-TIME RESTORE: bring back the 18 Trip.com rows that
+// cleanupStaleMatchedTripPendingRows() deleted (2026-07-17, before the
+// no-delete policy went in). Every field below was read straight off the
+// still-existing ✅ Matched SCB rows those bookings settled against, so
+// this is a faithful reconstruction, not a guess. Restored with status
+// 'โอนแล้ว' (matching the current "never delete, mark settled" pattern)
+// plus a note recording the SCB ref they matched against and that this
+// row was restored. Run once from the Apps Script editor.
+// ═══════════════════════════════════════════════════════════════
+function restoreDeletedTripComRows() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('restoreDeletedTripComRows: sheet not found'); return; }
+
+  var RESTORE_ROWS = [
+    // [detectedDate, bookingId, guest, room, ci, co, net, scbBid, scbDate, origNote]
+    ['2026-05-25','1658109618839158','Burke/Jake','300','2026-02-22','2026-02-28','3230.22','SCB-2026-03-05-3230.22','2026-03-05',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1658109618839158# แล้ว//Booking no. #1658109618839158# accepted#1658109618839158#'],
+    ['2026-05-25','1653712218028901','Javid Osborne/Sarina','204','2026-03-17','2026-03-21','1826.72','SCB-2026-03-27-1826.72','2026-03-27',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1653712218028901# แล้ว//Booking no. #1653712218028901# accepted#1653712218028901#'],
+    ['2026-05-25','1622926103974015','PARSAWANG/JIRANAN','204','2026-03-26','2026-04-01','2791.86','SCB-2026-04-09-2791.86','2026-04-09',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1622926103974015# แล้ว//Booking no. #1622926103974015# accepted#1622926103974015#'],
+    ['2026-05-25','1622926832063903','BOONTUM/PAKPONG','300','2026-04-22','2026-04-25','1750.78','SCB-2026-05-05-5555.03','2026-05-05',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: Fwd: ยืนยันหมายเลขการจอง #1622926832063903# แล้ว//Booking no. #1622926832063903# accepted#1622926832063903#'],
+    ['2026-05-25','1622926832063939','YAMKAMOL/METAWEE','204','2026-04-22','2026-04-25','2099.22','SCB-2026-05-05-5555.03','2026-05-05',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1622926832063939# แล้ว//Booking no. #1622926832063939# accepted#1622926832063939#'],
+    ['2026-05-25','1400825520948811','NAM/SANG WON','108','2026-04-23','2026-04-26','1705.03','SCB-2026-05-05-5555.03','2026-05-05',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1400825520948811# แล้ว//Booking no. #1400825520948811# accepted#1400825520948811#'],
+    ['2026-05-25','1658110928023978','OBMALEE/THIDA','204','2026-05-04','2026-05-09','1334.31','SCB-2026-05-18-1334.31','2026-05-18',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1658110928023978# แล้ว//Booking no. #1658110928023978# accepted#1658110928023978#'],
+    ['2026-05-25','1622927451953412','Rattanabamrung/Araya','103','2026-05-18','2026-05-21','1717.56','SCB-2026-05-25-1717.56','2026-05-25',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd: Fwd: ยืนยันหมายเลขการจอง #1622927451953412# แล้ว//Booking no. #1622927451953412# accepted#1622927451953412#'],
+    ['2026-05-25','1622927453858436','laosonti/aomsub,Rattanabamrung/Araya','103','2026-05-19','2026-05-22','1637.73','SCB-2026-05-28-1637.73','2026-05-28',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: noreply_htl@trip.com ยืนยันหมายเลขการจอง #1622927453858436#'],
+    ['2026-05-25','1128147902481442','Shahid Hussain/Arqum','300','2026-05-14','2026-05-31','7529.75','SCB-2026-06-05-7529.75','2026-06-05',
+      'Non-refundable | Prepaid | Trip.com | Fwd Trip.com: Fwd Trip.com: ยืนยันหมายเลขการจอง #1128147902481442# แล้ว//Booking no. #1128147902481442# accepted#1128147902481442#'],
+    ['2026-06-05','1578947342348802','SU MYAT/AUNG','103','2026-06-03','2026-06-12','3003.63','SCB-2026-06-25-12380.35','2026-06-25',
+      'Non-refundable | Prepaid | Trip.com | ประกาศ: ขอยกเว้นค่าธรรมเนียมการยกเลิกไม่สำเร็จ (หมายเลขการจอง 1578947342348802)//Notice: Cancellation fee waiver request failed (booking no. 1578947342348802)#1578947342348802#'],
+    ['2026-06-12','1622928032878497','Boon/Pornpawit','103','2026-06-12','2026-06-16','2054.76','SCB-2026-06-25-12380.35','2026-06-25',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1622928032878497# แล้ว//Booking no. #1622928032878497# accepted#1622928032878497#'],
+    ['2026-06-15','1622928101685164','Boon/Pornpawit','103','2026-06-16','2026-06-19','2175.99','SCB-2026-06-25-12380.35','2026-06-25',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1622928101685164# แล้ว//Booking no. #1622928101685164# accepted#1622928101685164#'],
+    ['2026-06-16','1622928138476811','PATHONG/THANAPHACHARA','300','2026-06-16','2026-06-20','1905.72','SCB-2026-06-25-12380.35','2026-06-25',
+      'Non-refundable | Prepaid | Trip.com | ประกาศ: ขอยกเว้นค่าธรรมเนียมการยกเลิกไม่สำเร็จ (หมายเลขการจอง 1622928138476811)//Notice: Cancellation fee waiver request failed (booking no. 1622928138476811)#1622928138476811#'],
+    ['2026-06-09','1653714323322744','BUKBOON/THANAPORNPAN','204','2026-06-16','2026-06-21','3240.25','SCB-2026-06-25-12380.35','2026-06-25',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1653714323322744# แล้ว//Booking no. #1653714323322744# accepted#1653714323322744#'],
+    ['2026-06-22','1167730507722950','BUNYACHANON/BHICHAYADA','108','2026-06-22','2026-06-29','2697.10','SCB-2026-07-06-2697.10','2026-07-06',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1167730507722950# แล้ว//Booking no. #1167730507722950# accepted#1167730507722950#'],
+    ['2026-06-29','1622928602075634','LANDREAUGRASMUCK/SUPASUTA','300','2026-06-30','2026-07-05','2465.66','SCB-2026-07-08-2465.66','2026-07-08',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1622928602075634# แล้ว//Booking no. #1622928602075634# accepted#1622928602075634#'],
+    ['2026-07-09','1622928831190171','Htet/Eaint Phoo','204','2026-07-10','2026-07-12','1880.52','SCB-2026-07-15-1880.52','2026-07-15',
+      'Non-refundable | Prepaid | Trip.com | ยืนยันหมายเลขการจอง #1622928831190171# แล้ว//Booking no. #1622928831190171# accepted#1622928831190171#']
+  ];
+
+  var lastRow = sheet.getLastRow();
+  var startRow = lastRow + 1;
+  var values = RESTORE_ROWS.map(function(r) {
+    var detectedDate=r[0], bid=r[1], guest=r[2], room=r[3], ci=r[4], co=r[5],
+        net=r[6], scbBid=r[7], scbDate=r[8], origNote=r[9];
+    var nights = Math.round((new Date(co) - new Date(ci)) / 86400000);
+    var note = origNote + ' | โอนแล้ว | SCB Trip.com settlement ref ' + scbBid +
+               ' | Value Date: ' + scbDate + ' | ⤴ restored ' +
+               Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyy-MM-dd');
+    return [detectedDate,'Trip.com',bid,bid,guest,room,ci,co,nights,'','',net,'โอนแล้ว',note];
+  });
+
+  sheet.getRange(startRow, 1, values.length, HEADERS.length).setValues(values);
+  sheet.getRange(startRow, 1, values.length, HEADERS.length).setBackground(OTA_BG['Trip.com']);
+  sheet.getRange(startRow, 10, values.length, 3).setNumberFormat('#,##0.00');
+
+  Logger.log('restoreDeletedTripComRows: restored ' + values.length + ' rows at row ' + startRow);
+  SpreadsheetApp.getActiveSpreadsheet().toast('Restored ' + values.length + ' Trip.com rows', 'Done', 5);
+
+  // Tidy up: re-sort and re-style so the restored rows land in the right
+  // place instead of sitting appended at the bottom.
+  sortPayoutByOTA(sheet);
+  stylePayoutLog();
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DIAGNOSTIC: dump every row related to the 2026-07-04 SCB-17560.24
 // payout (by bookingId, conf code, or guest name) as JSON so it can be
 // inspected without direct sheet access. Run once, paste the log output.
