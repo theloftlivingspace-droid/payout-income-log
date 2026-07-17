@@ -2345,6 +2345,13 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNicco0705DuplicateRow(): ' + msg2 + '</body>'
     );
   }
+  if (p.action==='restoreFromGitHub') {
+    var msg3 = restoreFromGitHub();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ restoreFromGitHub(): ' + (msg3 || 'done') + '</body>'
+    );
+  }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
   if (p.action) {
     var out = handleRequest(p);
@@ -4515,8 +4522,8 @@ function exportToGitHub() {
 // รันเมื่อ sheet หาย หรือต้องการ rollback
 // ═══════════════════════════════════════════════════════════════
 function restoreFromGitHub() {
-  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN')
-              || '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';
+  var token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) { Logger.log('restoreFromGitHub: missing GITHUB_TOKEN script property'); return 'error: missing GITHUB_TOKEN script property'; }
   var repo  = 'theloftlivingspace-droid/payout-income-log';
   var ss    = SpreadsheetApp.openById(MASTER_SHEET_ID);
 
