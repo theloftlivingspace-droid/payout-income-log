@@ -232,6 +232,7 @@ function quickReformat() {
   fillMissingCiCoFromEmail();
   sortPayoutByOTA(sheet);
   stylePayoutLog();
+  flagStaleUnmatchedAirbnbPayouts();
   rebuildBankLedger();
   exportToGitHub();
   SpreadsheetApp.getActiveSpreadsheet().toast('QuickReformat เสร็จ | GitHub synced', 'Done', 4);
@@ -1922,6 +1923,71 @@ function cleanupStaleMatchedTripPendingRows() {
   Logger.log('cleanupStaleMatchedTripPendingRows: deleted ' + toDelete.length + ' stale pending rows');
   Logger.log(preview.join('\n'));
   SpreadsheetApp.getActiveSpreadsheet().toast('Cleanup: ลบ ' + toDelete.length + ' stale pending rows', 'Done', 5);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SAFETY NET: flag Airbnb payout rows that claim 'โอนแล้ว' (money sent,
+// per the payout email) but have sat unmatched against any SCB transfer
+// for too long. Airbnb normally settles same-day as check-in, so if an
+// Airbnb row is still un-matched (matchSCBtoOTA never found a
+// corresponding SCB row for it) after AIRBNB_STALE_DAYS days, that's a
+// real red flag — the money may never have actually landed in SCB.
+//
+// This does NOT delete or change the row's status — it stays 'โอนแล้ว'
+// exactly as before, so invoice creation (PAYOUT_STATUSES_FOR_INVOICE)
+// is untouched. It only appends a warning marker to the notes column
+// and highlights the row, so it's visible when someone opens the sheet.
+// Safe to re-run: rows already flagged aren't flagged twice, and rows
+// that get matched later (status flips to ✅ Matched, or the row gets
+// deleted by matchSCBtoOTA) simply stop showing up here on the next run.
+// ═══════════════════════════════════════════════════════════════
+var AIRBNB_STALE_DAYS   = 5;
+var AIRBNB_STALE_MARK   = '⚠️ ยังไม่เจอ SCB match';
+var AIRBNB_STALE_BG     = '#fff3cd';
+
+function flagStaleUnmatchedAirbnbPayouts() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) { Logger.log('flagStaleUnmatchedAirbnbPayouts: sheet not found'); return; }
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var today = new Date();
+  var flagged = [];
+
+  data.forEach(function(row, i) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    if (ota !== 'Airbnb') return;
+
+    var status = (row[C.status-1] || '').toString();
+    if (status.indexOf('✅') === 0) return;              // already matched → fine
+    if (status.indexOf('โอนแล้ว') !== 0) return;          // not a "money sent" row (e.g. refund/adjustment note differs) — adjust if needed
+
+    var notes = (row[C.notes-1] || '').toString();
+    if (notes.indexOf(AIRBNB_STALE_MARK) >= 0) return;    // already flagged, don't re-stack
+
+    var detected = row[C.date-1];
+    if (!detected) return;
+    var detectedDate = (detected instanceof Date) ? detected : new Date(detected);
+    if (isNaN(detectedDate.getTime())) return;
+
+    var ageDays = Math.floor((today - detectedDate) / 86400000);
+    if (ageDays < AIRBNB_STALE_DAYS) return;
+
+    var r = i + 2;
+    var newNotes = notes ? (notes + ' | ' + AIRBNB_STALE_MARK + ' (' + ageDays + ' วัน)')
+                          : (AIRBNB_STALE_MARK + ' (' + ageDays + ' วัน)');
+    sheet.getRange(r, C.notes).setValue(newNotes);
+    sheet.getRange(r, 1, 1, HEADERS.length).setBackground(AIRBNB_STALE_BG);
+    flagged.push((row[C.guest-1]||'') + ' | ฿' + (row[C.net-1]||'') + ' | ' + ageDays + ' วัน');
+  });
+
+  Logger.log('flagStaleUnmatchedAirbnbPayouts: flagged ' + flagged.length + ' rows');
+  Logger.log(flagged.join('\n'));
+  if (flagged.length > 0) {
+    SpreadsheetApp.getActiveSpreadsheet().toast('⚠️ พบ Airbnb payout ' + flagged.length + ' รายการ ค้าง SCB match นานผิดปกติ', 'Warning', 6);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
