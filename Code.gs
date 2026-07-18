@@ -3287,7 +3287,7 @@ function styleSheet1(){
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
 
-  var lastRow, lastCol=8;
+  var lastRow, lastCol=9;
 
   // ── Step 1: Deduplicate "รอยืนยัน" rows ที่ conf ซ้ำกับ row ที่มีห้องจริงแล้ว ──
   lastRow=sh.getLastRow();
@@ -3361,11 +3361,11 @@ function styleSheet1(){
   // column widths + header
   sh.setColumnWidth(1,160);sh.setColumnWidth(2,180);sh.setColumnWidth(3,110);
   sh.setColumnWidth(4,110);sh.setColumnWidth(5,100);sh.setColumnWidth(6,220);
-  sh.setColumnWidth(7,200);sh.setColumnWidth(8,110);
+  sh.setColumnWidth(7,200);sh.setColumnWidth(8,110);sh.setColumnWidth(9,150);
   sh.getRange(1,1,1,lastCol)
     .setBackground('#1a1a2e').setFontColor('#ffffff').setFontWeight('bold')
     .setFontSize(11).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  sh.getRange(1,1,1,lastCol).setValues([['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง']]);
+  sh.getRange(1,1,1,lastCol).setValues([['เลขห้อง','ชื่อแขก','เช็คอิน','เช็คเอาท์','Channel','ResId','Note','วันจอง','Apartmentery Booking ID']]);
   sh.setRowHeight(1,36);
   sh.setFrozenRows(1);
 
