@@ -700,8 +700,18 @@ function parseAirbnbEmail(msg) {
 
     var homeLine='',listLine='',confCode='';
     var checkIn='',checkOut='',isRes=false,isAdj=false,resDate='';
+    var nextGuestIdx=-1;
     for (var j=i+1;j<Math.min(i+10,lines.length);j++) {
       var nl=lines[j];
+      // ถ้าเจอ guest ถัดไป (บรรทัด "ชื่อ  ฿xxx.xx THB") ก่อนที่จะเจอ Home/Resolution/
+      // Adjustment/confCode ของ guest ปัจจุบัน แปลว่า guest ปัจจุบันไม่มีข้อมูลพวกนี้
+      // เลย (เช่น รายการหักเงินทั่วไปอย่าง "Paid Photography Adjustment • date")
+      // ต้องหยุด scan ทันที ห้ามลาก Home/room/confCode ของ guest ถัดไปมาใช้ผิดคน
+      // root cause: "Guest -฿2,862.44 Paid Photography Adjustment" ดึง Home/room/
+      // confCode ของ J Barber (guest ถัดไป) มาใช้ แล้ว J Barber เองก็หายไปจาก payout
+      if (!homeLine && /^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i.test(nl)) {
+        nextGuestIdx=j; break;
+      }
       if (!homeLine && /^Home\s*[•·\u2022\u00b7\-]/.test(nl)) {
         homeLine=nl;
         var dm=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
@@ -773,6 +783,8 @@ function parseAirbnbEmail(msg) {
     if (confCode) {
       var ci2=lines.indexOf(confCode,i+1);
       i=ci2>=0?ci2+1:i+5;
+    } else if (nextGuestIdx>=0) {
+      i=nextGuestIdx;
     } else { i+=4; }
   }
   Logger.log('parseAirbnb "'+msg.getSubject()+'": '+rows.length+' bookings');
@@ -2299,6 +2311,70 @@ function fixNihel0704Payout() {
 // matching. Call once via: <webapp-url>?action=fixNicco0705  then
 // delete this block.
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-23 batch (Airbnb Batch THB 5613.97)
+// Root cause: parseAirbnbEmail() scanned past the unrecognized
+// "Paid Photography Adjustment • 7/23/2026" + "-" lines for the "Guest"
+// -฿2,862.44 entry, and kept scanning straight into J Barber's own
+// Home/room/confCode block, wrongly tagging the "Guest" adjustment row
+// with J Barber's confCode HMYPAHXH5B/room/dates — then jumped past
+// J Barber's own guest+amount line entirely, so his ฿3,824.14 row never
+// got created. (Fixed above: scan now stops at the next guest's line.)
+// This backfills the missing J Barber row, corrects the "Guest" row to
+// be the room-300 photography adjustment it actually is (per owner),
+// and fixes Mike Ubaydullaev's room (email said "The Loft Allure", not
+// Legacy/214 — his current stay is 203 Allure 2026-07-22→07-31).
+// Call once via: <webapp-url>?action=fixJBarber0723   then delete this block.
+// ═══════════════════════════════════════════════════════════════
+function fixJBarber0723Payout() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var already = data.some(function(row) {
+    return (row[C.bid - 1] || '').toString() === 'ABB-HMYPAHXH5B' &&
+           (row[C.guest - 1] || '').toString() === 'J Barber';
+  });
+  if (already) return 'already fixed, skipped';
+
+  var guestRowIdx = -1, mikeRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid = (data[i][C.bid - 1] || '').toString();
+    var guest = (data[i][C.guest - 1] || '').toString();
+    if (bid === 'ABB-HMYPAHXH5B' && guest === 'Guest') guestRowIdx = i + 2;
+    if (bid === 'ABB-HMDZF3TSHZ' && guest === 'Mike Ubaydullaev') mikeRowIdx = i + 2;
+  }
+  if (guestRowIdx === -1) return 'mangled Guest row not found (already handled?)';
+
+  // 1) Fix the "Guest" row: it's the room-300 photography adjustment, not J Barber's booking
+  sheet.getRange(guestRowIdx, 1, 1, HEADERS.length).setValues([[
+    '2026-07-23','Airbnb','ABB-20260723-PHOTO','','Guest','300','','','',
+    5613.97,'',-2862.44,'โอนแล้ว (Adjustment)',
+    'Adjustment: Paid Photography Adjustment (ห้อง 300) | Batch THB 5613.97 | ส่ง 2026-07-23'
+  ]]);
+
+  // 2) Insert the missing J Barber row right after it
+  sheet.insertRowAfter(guestRowIdx);
+  sheet.getRange(guestRowIdx + 1, 1, 1, HEADERS.length).setValues([[
+    '2026-07-23','Airbnb','ABB-HMYPAHXH5B','HMYPAHXH5B','J Barber','214',
+    '2026-07-22','2026-07-31',9,5613.97,'',3824.14,'โอนแล้ว',
+    'Airbnb Batch THB 5613.97 | ส่ง 2026-07-23'
+  ]]);
+  if (mikeRowIdx > guestRowIdx) mikeRowIdx++; // row indices below the insert shift down by 1
+
+  // 3) Fix Mike Ubaydullaev's room (email said "The Loft Allure", not Legacy/214)
+  if (mikeRowIdx !== -1) {
+    sheet.getRange(mikeRowIdx, C.room, 1, 1).setValue('203');
+  }
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('Fixed 2026-07-23 J Barber/Guest payout batch', 'Done', 5);
+  return 'ok: fixed Guest(room 300 adjustment) row, backfilled J Barber row' +
+    (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)');
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
@@ -2390,6 +2466,13 @@ function doGet(e){
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width">' +
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNihel0704Payout(): ' + msg + '</body>'
+    );
+  }
+  if (p.action==='fixJBarber0723') {
+    var msg3 = fixJBarber0723Payout();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixJBarber0723Payout(): ' + msg3 + '</body>'
     );
   }
   if (p.action==='fixNicco0705') {
