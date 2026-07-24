@@ -2479,9 +2479,18 @@ function fixJBarber0723Payout() {
     sheet.getRange(mikeRowIdx, C.room, 1, 1).setValue('203');
   }
 
+  // 4) The rows above are now correct, but the raw SCB deposit row
+  // (SCB-2026-07-23-5613.97, still "รอ match"/"?") was never consumed —
+  // that only happens inside matchSCBtoOTA(), which this function used to
+  // skip, leaving the bank row orphaned forever. Run the match now.
+  matchSCBtoOTA(sheet);
+  rebuildBankLedger();
+  exportToGitHub();
+
   SpreadsheetApp.getActiveSpreadsheet().toast('Fixed 2026-07-23 J Barber/Guest payout batch', 'Done', 5);
   return 'ok: fixed Guest(room 214 adjustment, auto-picked) row, backfilled J Barber row' +
-    (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)');
+    (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)') +
+    ', matched SCB row + rebuilt Bank_Ledger';
 }
 
 function fixNicco0705DuplicateRow() {
