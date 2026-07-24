@@ -704,12 +704,13 @@ function parseAirbnbEmail(msg) {
     for (var j=i+1;j<Math.min(i+10,lines.length);j++) {
       var nl=lines[j];
       // ถ้าเจอ guest ถัดไป (บรรทัด "ชื่อ  ฿xxx.xx THB") ก่อนที่จะเจอ Home/Resolution/
-      // Adjustment/confCode ของ guest ปัจจุบัน แปลว่า guest ปัจจุบันไม่มีข้อมูลพวกนี้
-      // เลย (เช่น รายการหักเงินทั่วไปอย่าง "Paid Photography Adjustment • date")
-      // ต้องหยุด scan ทันที ห้ามลาก Home/room/confCode ของ guest ถัดไปมาใช้ผิดคน
+      // Adjustment/confCode/listLine/confCode ของ guest ปัจจุบันครบ แปลว่าข้อมูล
+      // ที่เหลือของ guest ปัจจุบันหมดแค่นี้ ต้องหยุด scan ทันที ห้ามลาก Home/room/
+      // confCode ของ guest ถัดไปมาใช้ผิดคน — เช็คแบบ unconditional (ไม่ใช่แค่ตอน
+      // homeLine ยังว่าง) เพราะ listLine/confCode ก็ห้ามลากข้าม guest เหมือนกัน
       // root cause: "Guest -฿2,862.44 Paid Photography Adjustment" ดึง Home/room/
       // confCode ของ J Barber (guest ถัดไป) มาใช้ แล้ว J Barber เองก็หายไปจาก payout
-      if (!homeLine && /^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i.test(nl)) {
+      if (/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i.test(nl)) {
         nextGuestIdx=j; break;
       }
       if (!homeLine && /^Home\s*[•·\u2022\u00b7\-]/.test(nl)) {
@@ -726,6 +727,16 @@ function parseAirbnbEmail(msg) {
         if (dm2) { checkIn=slashToISO(dm2[1]); checkOut=slashToISO(dm2[2]); }
         var rm2=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (rm2) resDate=slashToISO(rm2[1]);
+      } else if (!homeLine&&/adjustment/i.test(nl)&&/(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)&&!/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)) {
+        // Generic "<description> Adjustment • date" line (e.g. "Paid Photography
+        // Adjustment • 7/23/2026") — single date only, no dash-range, and doesn't
+        // necessarily start with the word "Adjustment". Previously fell through
+        // every branch here and the scan continued into the next guest's block
+        // (caught now by the nextGuestIdx guard above, but tag it properly so it
+        // shows up as isAdj/'โอนแล้ว (Adjustment)' instead of a plain unmatched row).
+        homeLine=nl; isAdj=true;
+        var rm3=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (rm3) resDate=slashToISO(rm3[1]);
       } else if (!homeLine&&/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)) {
         // Generic category line (e.g. "Cancellation Fee - 7/4/2026 - 7/7/2026")
         // ที่ไม่ใช่ Home/Resolution/Adjustment - กันไม่ให้ scan รั่วไปกินข้อมูลของ
@@ -780,6 +791,16 @@ function parseAirbnbEmail(msg) {
           ?'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
           :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt)));
 
+    // isAdj + ไม่มี confCode = ไม่มีอะไรให้ pipeline ปกติ (guest-name matching ใน
+    // loft-booking-invoice-todo) ใช้ผูกกับ booking ได้เลย ต้องแจ้งเตือนทันทีแทนที่
+    // จะปล่อยให้เงียบหายไปจนกว่าจะมีคนบังเอิญไปเจอเอง
+    if (isAdj && !confCode) {
+      _notifyAdminUnmatchedAdjustment_({
+        dt: dt, guest: guest, net: net,
+        note: 'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
+      });
+    }
+
     if (confCode) {
       var ci2=lines.indexOf(confCode,i+1);
       i=ci2>=0?ci2+1:i+5;
@@ -789,6 +810,42 @@ function parseAirbnbEmail(msg) {
   }
   Logger.log('parseAirbnb "'+msg.getSubject()+'": '+rows.length+' bookings');
   return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Alert admin when a payout row can't be auto-linked to any booking:
+// isAdj (Resolution/Adjustment-style line) with no confCode found means
+// there's nothing for the existing guest-name-match pipeline in
+// loft-booking-invoice-todo (autoCreateApartmenteryInvoicesAndReceipts)
+// to key off — it'll just silently skip it forever. Previously this
+// meant these sat unnoticed until someone happened to spot them
+// manually (e.g. the 2026-07-23 "Guest / Paid Photography Adjustment"
+// row, which also needed manual linking as an other-charge line item
+// on an existing booking — see loft-booking-invoice-todo's
+// linkPhotographyAdjustment20260723.gs for that one-off).
+// ═══════════════════════════════════════════════════════════════
+function _notifyAdminUnmatchedAdjustment_(row) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var botUrl = props.getProperty('BOT_URL') || 'https://hotel-line-bot.onrender.com';
+    var adminToken = props.getProperty('ADMIN_TOKEN') || 'apt2025@secret';
+    var note = '⚠️ พบรายการ Adjustment ใน payout ที่ผูก booking อัตโนมัติไม่ได้ (ไม่มี conf code)\n' +
+      'วันที่: ' + row.dt + '\n' +
+      'Guest: ' + row.guest + '\n' +
+      'ยอด: ' + row.net + ' บาท\n' +
+      'หมายเหตุ: ' + row.note + '\n' +
+      'ต้องระบุเองว่าจะผูกกับ booking ไหน (ห้อง + booking ล่าสุด) แล้วสร้าง invoice ' +
+      'เป็น other charge บน booking นั้น — ดู linkPhotographyAdjustment20260723.gs เป็นตัวอย่าง';
+    UrlFetchApp.fetch(botUrl + '/api/send-admin-alert', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ note: note }),
+      headers: { 'x-admin-token': adminToken },
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    Logger.log('_notifyAdminUnmatchedAdjustment_ failed: ' + e.message);
+  }
 }
 
 function decodeQP(s) {
