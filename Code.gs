@@ -689,6 +689,7 @@ function parseAirbnbEmail(msg) {
   }
 
   var rows = [], i = 0;
+  var unresolvedAdjRows = []; // isAdj rows with no confCode+no resolved room — see batch-room backfill below
   while (i < lines.length) {
     var ln = lines[i];
     var gam = ln.match(/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
@@ -779,7 +780,7 @@ function parseAirbnbEmail(msg) {
       ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
       : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
 
-    rows.push(makeRow('Airbnb',dt,bookingId,confCode,
+    var newRow = makeRow('Airbnb',dt,bookingId,confCode,
       guest, roomFromText(listLine),
       checkIn,checkOut,
       checkIn&&checkOut?nightsBetween(checkIn,checkOut):'',
@@ -789,17 +790,9 @@ function parseAirbnbEmail(msg) {
         ?'Resolution Payout | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
         :(isAdj
           ?'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
-          :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt)));
-
-    // isAdj + ไม่มี confCode = ไม่มีอะไรให้ pipeline ปกติ (guest-name matching ใน
-    // loft-booking-invoice-todo) ใช้ผูกกับ booking ได้เลย ต้องแจ้งเตือนทันทีแทนที่
-    // จะปล่อยให้เงียบหายไปจนกว่าจะมีคนบังเอิญไปเจอเอง
-    if (isAdj && !confCode) {
-      _notifyAdminUnmatchedAdjustment_({
-        dt: dt, guest: guest, net: net,
-        note: 'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
-      });
-    }
+          :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt));
+    rows.push(newRow);
+    if (isAdj && !confCode && !isValidRoom(newRow.room)) unresolvedAdjRows.push(newRow);
 
     if (confCode) {
       var ci2=lines.indexOf(confCode,i+1);
@@ -808,6 +801,33 @@ function parseAirbnbEmail(msg) {
       i=nextGuestIdx;
     } else { i+=4; }
   }
+
+  // Backfill: an isAdj row with no confCode has nothing of its own to key a
+  // room off (e.g. "Guest / Paid Photography Adjustment" — the email never
+  // says which room the photography was for). Per Nathan: just pick one of
+  // the rooms that came in the SAME batch (same amount sent together,
+  // batchTotal/dt match) rather than leaving it blank/unmatchable — good
+  // enough for recording the expense somewhere real instead of nowhere.
+  if (unresolvedAdjRows.length) {
+    var batchRoomCandidate = rows.find(function(r) {
+      return isValidRoom(r.room) && unresolvedAdjRows.indexOf(r) === -1;
+    });
+    unresolvedAdjRows.forEach(function(r) {
+      if (batchRoomCandidate) {
+        r.room = batchRoomCandidate.room;
+        r.notes += ' | ห้อง auto-pick จาก ' + batchRoomCandidate.guest + ' (ยอดเดียวกันในแบทช์)';
+      }
+      // isAdj + ไม่มี confCode = ไม่มีอะไรให้ pipeline ปกติ (guest-name matching ใน
+      // loft-booking-invoice-todo) ใช้ผูกกับ booking ได้เลย ต้องแจ้งเตือนแทนที่จะ
+      // ปล่อยให้เงียบหายไปจนกว่าจะมีคนบังเอิญไปเจอเอง
+      _notifyAdminUnmatchedAdjustment_({
+        dt: r.date, guest: r.guest, net: r.net,
+        room: batchRoomCandidate ? r.room : '',
+        note: r.notes
+      });
+    });
+  }
+
   Logger.log('parseAirbnb "'+msg.getSubject()+'": '+rows.length+' bookings');
   return rows;
 }
@@ -829,13 +849,16 @@ function _notifyAdminUnmatchedAdjustment_(row) {
     var props = PropertiesService.getScriptProperties();
     var botUrl = props.getProperty('BOT_URL') || 'https://hotel-line-bot.onrender.com';
     var adminToken = props.getProperty('ADMIN_TOKEN') || 'apt2025@secret';
-    var note = '⚠️ พบรายการ Adjustment ใน payout ที่ผูก booking อัตโนมัติไม่ได้ (ไม่มี conf code)\n' +
+    var note = '⚠️ พบรายการ Adjustment ใน payout ที่ไม่มี conf code ของตัวเอง\n' +
       'วันที่: ' + row.dt + '\n' +
       'Guest: ' + row.guest + '\n' +
       'ยอด: ' + row.net + ' บาท\n' +
+      (row.room
+        ? 'ห้อง: ' + row.room + ' (auto-pick จากรายการอื่นในแบทช์เดียวกัน)\n'
+        : 'ห้อง: ไม่มีรายการอื่นในแบทช์ให้ auto-pick — ต้องระบุเอง\n') +
       'หมายเหตุ: ' + row.note + '\n' +
-      'ต้องระบุเองว่าจะผูกกับ booking ไหน (ห้อง + booking ล่าสุด) แล้วสร้าง invoice ' +
-      'เป็น other charge บน booking นั้น — ดู linkPhotographyAdjustment20260723.gs เป็นตัวอย่าง';
+      'ยังต้องสร้าง invoice เป็น other charge บน booking ล่าสุดของห้องนี้เอง ' +
+      '(ดู linkPhotographyAdjustment20260723.gs เป็นตัวอย่าง)';
     UrlFetchApp.fetch(botUrl + '/api/send-admin-alert', {
       method: 'post',
       contentType: 'application/json',
