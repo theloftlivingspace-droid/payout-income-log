@@ -3873,7 +3873,13 @@ function matchSCBtoOTA(sheet) {
     var dt=normalizeDate(raw);
     if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
     airbnbByDate[dt].push({
-      conf:conf,
+      // Adjustment/Resolution rows (e.g. Photography Adjustment) have no
+      // confCode. Falling back to the row's own unique bid as ref lets
+      // buildSCBRows() resolve room/ci/co via detailByBid[ref] below instead
+      // of showing room '?' in the SCB breakdown note — bid is unique per
+      // row so there's no cross-guest collision risk the way a guest-name
+      // fallback would have.
+      conf: conf || bid,
       guest:(row[C.guest-1]||'').toString(),
       net:net, total:bt,
       netStr:fmtAmt(row[C.net-1]),
@@ -4061,7 +4067,7 @@ function matchSCBtoOTA(sheet) {
       var b=airbnbBatches[matchKey];
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
-          b.confs,b.guests,b.nets,detailByConf,{},'Airbnb payout')});
+          b.confs,b.guests,b.nets,detailByConf,detailByBid,'Airbnb payout')});
       var note=noteFor('Airbnb payout');
       if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:note}); });
       delete airbnbBatches[matchKey]; return;
