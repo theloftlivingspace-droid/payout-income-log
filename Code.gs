@@ -57,6 +57,7 @@ var MANUAL_ROOM_FIXES = [
   // ── 2026-06-23 batch fix ──────────────────────────────────────
   { conf:'HMFNWRKAHD', room:'103' },  // Johnny Brillantes → 103 Elegance
   { conf:'HM3DJ3XWXT', room:'300' },  // Por → 300
+  { conf:'HMYPAHXH5B', room:'300' },  // Photography Adjustment -฿2,862.44 (2026-07-23) → 300 Luxury
   // ── Room swap fix 2026-06-13 ──────────────────────────────────
   { conf:'BKC-seanaldcro-20260613', room:'205' },  // sean aldcroft → 205 Allure
   { conf:'ABB-maudsantoc-20260613', room:'210' },  // Maud Santocildes → 210 Radiance
