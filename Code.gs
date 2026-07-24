@@ -53,6 +53,14 @@ const SCB_SUB_BG   = '#f1f8e9';
 // ═══════════════════════════════════════════════════════════════
 // MANUAL ROOM FIXES
 // ═══════════════════════════════════════════════════════════════
+// Host-level charges (e.g. Airbnb "Photography Adjustment") never carry a
+// room/guest/checkin in the email — Airbnb bills these at the account level,
+// not against a reservation. Apartmentery still requires every invoice to
+// attach to an existing booking, so rather than leaving these stuck as '?'
+// forever (see HMYPAHXH5B, 2026-07-23), default them to one designated room.
+// Change this if the "home" room for unattributable host fees should differ.
+var DEFAULT_ADJUSTMENT_ROOM = '300';
+
 var MANUAL_ROOM_FIXES = [
   // ── 2026-06-23 batch fix ──────────────────────────────────────
   { conf:'HMFNWRKAHD', room:'103' },  // Johnny Brillantes → 103 Elegance
@@ -759,8 +767,16 @@ function parseAirbnbEmail(msg) {
       ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
       : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
 
+    // Adjustment lines (e.g. Photography Adjustment) have no Home/listLine to
+    // derive a room from at all, so roomFromText would always return '?'.
+    // Default those specifically to DEFAULT_ADJUSTMENT_ROOM so the booking +
+    // invoice pipeline has something to attach to; leave every other case
+    // (Resolution Payouts, normal bookings) to resolve '?' the usual way.
+    var rowRoom = roomFromText(listLine);
+    if (rowRoom === '?' && isAdj) rowRoom = DEFAULT_ADJUSTMENT_ROOM;
+
     rows.push(makeRow('Airbnb',dt,bookingId,confCode,
-      guest, roomFromText(listLine),
+      guest, rowRoom,
       checkIn,checkOut,
       checkIn&&checkOut?nightsBetween(checkIn,checkOut):'',
       batchTotal,'',net,
