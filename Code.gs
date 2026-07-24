@@ -2580,6 +2580,59 @@ function fixGuestAdjustment0723Room() {
   return result;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-23 batch — total/✅ row notes still say "Guest()"
+// loft-booking-invoice-todo's getInvoiceToCreate_() ignores ↳ sub-rows
+// entirely and instead re-parses per-guest entries from the ✅ total row's
+// notes text via regex \(([^)]+)\) — which requires non-empty parens. The
+// total row was built (by buildSCBRows) before the room-resolution fix
+// landed, so its notes still read "Guest() NET ฿-2862.44" with empty
+// parens — the regex can't capture that, so the whole entry gets silently
+// dropped and never shows up in the invoice-to-create list at all. This
+// patches the total row's notes + Conf. Code to use ABB-20260723-PHOTO in
+// place of the empty parens.
+// Call once via: <webapp-url>?action=fixGuestAdj0723TotalRow   then delete.
+// ═══════════════════════════════════════════════════════════════
+function fixGuestAdjustment0723TotalRow() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var targetRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid    = (data[i][C.bid - 1]    || '').toString().trim();
+    var status = (data[i][C.status - 1] || '').toString().trim();
+    var notes  = (data[i][C.notes - 1]  || '').toString();
+    if (bid === 'SCB-2026-07-23-5613.97' && status.indexOf('✅') === 0 && notes.indexOf('Guest()') >= 0) {
+      targetRowIdx = i + 2; break;
+    }
+  }
+  if (targetRowIdx === -1) {
+    Logger.log('fixGuestAdjustment0723TotalRow: target row not found (already fixed?)');
+    return 'target row not found (already fixed?)';
+  }
+
+  var notesCell = sheet.getRange(targetRowIdx, C.notes);
+  var newNotes = notesCell.getValue().toString().replace('Guest()', 'Guest(ABB-20260723-PHOTO)');
+  notesCell.setValue(newNotes);
+
+  var confCell = sheet.getRange(targetRowIdx, C.conf);
+  var curConf = confCell.getValue().toString();
+  if (curConf.indexOf('ABB-20260723-PHOTO') === -1) {
+    confCell.setValue('ABB-20260723-PHOTO, ' + curConf);
+  }
+
+  rebuildBankLedger();
+  exportToGitHub();
+
+  var result = 'ok: patched total row ' + targetRowIdx + ' notes/conf so getInvoiceToCreate_ regex picks up Guest entry';
+  Logger.log('fixGuestAdjustment0723TotalRow: ' + result);
+  return result;
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
