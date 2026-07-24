@@ -2538,6 +2538,48 @@ function cleanupDuplicateAdjustment0723() {
   return result;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-23 batch — Guest adjustment row still room '?'
+// after SCB match. buildSCBRows() used to be called with {} instead of the
+// real detailByBid map (fixed in Code.gs 'buildSCBRows(Airbnb)' commit),
+// so this specific row got expanded with room '?' before that fix landed.
+// loft-booking-invoice-todo filters out '?' rooms, so the -2862.44
+// adjustment never showed up there. This patches just this one row.
+// Call once via: <webapp-url>?action=fixGuestAdj0723Room   then delete this block.
+// ═══════════════════════════════════════════════════════════════
+function fixGuestAdjustment0723Room() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var targetRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid   = (data[i][C.bid - 1]   || '').toString().trim();
+    var guest = (data[i][C.guest - 1] || '').toString().trim();
+    var net   = fmtAmt(data[i][C.net - 1]);
+    if (bid === 'SCB-2026-07-23-5613.97' && guest === 'Guest' && net === '-2862.44') {
+      targetRowIdx = i + 2; break;
+    }
+  }
+  if (targetRowIdx === -1) {
+    Logger.log('fixGuestAdjustment0723Room: target row not found (already fixed or bid changed?)');
+    return 'target row not found (already fixed or bid changed?)';
+  }
+
+  sheet.getRange(targetRowIdx, C.room, 1, 1).setValue('214');
+  sheet.getRange(targetRowIdx, C.conf, 1, 1).setValue('ABB-20260723-PHOTO');
+  rebuildBankLedger();
+  exportToGitHub();
+
+  var result = 'ok: set room 214 + conf ABB-20260723-PHOTO on row ' + targetRowIdx +
+    ', rebuilt Bank_Ledger + exported to GitHub';
+  Logger.log('fixGuestAdjustment0723Room: ' + result);
+  return result;
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
