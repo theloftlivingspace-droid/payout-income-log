@@ -2429,11 +2429,15 @@ function fixJBarber0723Payout() {
   }
   if (guestRowIdx === -1) return 'mangled Guest row not found (already handled?)';
 
-  // 1) Fix the "Guest" row: it's the room-300 photography adjustment, not J Barber's booking
+  // 1) Fix the "Guest" row: it's a photography adjustment with no room of its
+  // own — per the batch-room auto-pick rule, tag it with room 214 (J Barber,
+  // the first row in this same batch with a resolved room). The actual
+  // invoice gets linked to J Barber's booking 327170 separately, in
+  // loft-booking-invoice-todo's linkPhotographyAdjustment20260723.gs.
   sheet.getRange(guestRowIdx, 1, 1, HEADERS.length).setValues([[
-    '2026-07-23','Airbnb','ABB-20260723-PHOTO','','Guest','300','','','',
+    '2026-07-23','Airbnb','ABB-20260723-PHOTO','','Guest','214','','','',
     5613.97,'',-2862.44,'โอนแล้ว (Adjustment)',
-    'Adjustment: Paid Photography Adjustment (ห้อง 300) | Batch THB 5613.97 | ส่ง 2026-07-23'
+    'Adjustment: Paid Photography Adjustment | ห้อง auto-pick จาก J Barber (ยอดเดียวกันในแบทช์) | Batch THB 5613.97 | ส่ง 2026-07-23'
   ]]);
 
   // 2) Insert the missing J Barber row right after it
@@ -2451,7 +2455,7 @@ function fixJBarber0723Payout() {
   }
 
   SpreadsheetApp.getActiveSpreadsheet().toast('Fixed 2026-07-23 J Barber/Guest payout batch', 'Done', 5);
-  return 'ok: fixed Guest(room 300 adjustment) row, backfilled J Barber row' +
+  return 'ok: fixed Guest(room 214 adjustment, auto-picked) row, backfilled J Barber row' +
     (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)');
 }
 
