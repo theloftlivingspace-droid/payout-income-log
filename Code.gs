@@ -2498,6 +2498,46 @@ function fixJBarber0723Payout() {
   return result;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-23 batch — duplicate adjustment row
+// fixJBarber0723Payout() correctly created ABB-20260723-PHOTO (room 214,
+// auto-picked from J Barber). But an earlier parse run — before J Barber's
+// row existed in this batch — had already created ABB-20260723-0 (room 300,
+// DEFAULT_ADJUSTMENT_ROOM fallback) for the same -2862.44 charge and it was
+// never cleaned up. Both rows counting toward the 2026-07-23 net sum pushed
+// it to 2751.53 instead of 5613.97, so matchSCBtoOTA never found the SCB
+// deposit row. Delete the stale default-room duplicate, keep the correct one.
+// Call once via: <webapp-url>?action=cleanupDup0723   then delete this block.
+// ═══════════════════════════════════════════════════════════════
+function cleanupDuplicateAdjustment0723() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var staleRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid = (data[i][C.bid - 1] || '').toString();
+    if (bid === 'ABB-20260723-0') { staleRowIdx = i + 2; break; }
+  }
+  if (staleRowIdx === -1) {
+    Logger.log('cleanupDuplicateAdjustment0723: stale row not found (already cleaned up?)');
+    return 'stale row not found (already cleaned up?)';
+  }
+
+  sheet.deleteRow(staleRowIdx);
+  matchSCBtoOTA(sheet);
+  rebuildBankLedger();
+  exportToGitHub();
+
+  var result = 'ok: deleted stale ABB-20260723-0 (room 300 duplicate) at row ' + staleRowIdx +
+    ', rematched SCB + rebuilt Bank_Ledger';
+  Logger.log('cleanupDuplicateAdjustment0723: ' + result);
+  return result;
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
