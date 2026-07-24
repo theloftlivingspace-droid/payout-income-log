@@ -2443,7 +2443,7 @@ function fixJBarber0723Payout() {
     return (row[C.bid - 1] || '').toString() === 'ABB-HMYPAHXH5B' &&
            (row[C.guest - 1] || '').toString() === 'J Barber';
   });
-  if (already) return 'already fixed, skipped';
+  if (already) { Logger.log('fixJBarber0723Payout: already fixed, skipped'); return 'already fixed, skipped'; }
 
   var guestRowIdx = -1, mikeRowIdx = -1;
   for (var i = 0; i < data.length; i++) {
@@ -2452,7 +2452,10 @@ function fixJBarber0723Payout() {
     if (bid === 'ABB-HMYPAHXH5B' && guest === 'Guest') guestRowIdx = i + 2;
     if (bid === 'ABB-HMDZF3TSHZ' && guest === 'Mike Ubaydullaev') mikeRowIdx = i + 2;
   }
-  if (guestRowIdx === -1) return 'mangled Guest row not found (already handled?)';
+  if (guestRowIdx === -1) {
+    Logger.log('fixJBarber0723Payout: mangled Guest row not found (already handled?)');
+    return 'mangled Guest row not found (already handled?)';
+  }
 
   // 1) Fix the "Guest" row: it's a photography adjustment with no room of its
   // own — per the batch-room auto-pick rule, tag it with room 214 (J Barber,
@@ -2488,9 +2491,11 @@ function fixJBarber0723Payout() {
   exportToGitHub();
 
   SpreadsheetApp.getActiveSpreadsheet().toast('Fixed 2026-07-23 J Barber/Guest payout batch', 'Done', 5);
-  return 'ok: fixed Guest(room 214 adjustment, auto-picked) row, backfilled J Barber row' +
+  var result = 'ok: fixed Guest(room 214 adjustment, auto-picked) row, backfilled J Barber row' +
     (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)') +
     ', matched SCB row + rebuilt Bank_Ledger';
+  Logger.log('fixJBarber0723Payout: ' + result);
+  return result;
 }
 
 function fixNicco0705DuplicateRow() {
