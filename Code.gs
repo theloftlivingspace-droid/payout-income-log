@@ -698,6 +698,7 @@ function parseAirbnbEmail(msg) {
   }
 
   var rows = [], i = 0;
+  var unresolvedAdjRows = []; // isAdj rows with no confCode+no resolved room — see batch-room backfill below
   while (i < lines.length) {
     var ln = lines[i];
     var gam = ln.match(/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
@@ -709,8 +710,19 @@ function parseAirbnbEmail(msg) {
 
     var homeLine='',listLine='',confCode='';
     var checkIn='',checkOut='',isRes=false,isAdj=false,resDate='';
+    var nextGuestIdx=-1;
     for (var j=i+1;j<Math.min(i+10,lines.length);j++) {
       var nl=lines[j];
+      // ถ้าเจอ guest ถัดไป (บรรทัด "ชื่อ  ฿xxx.xx THB") ก่อนที่จะเจอ Home/Resolution/
+      // Adjustment/confCode/listLine/confCode ของ guest ปัจจุบันครบ แปลว่าข้อมูล
+      // ที่เหลือของ guest ปัจจุบันหมดแค่นี้ ต้องหยุด scan ทันที ห้ามลาก Home/room/
+      // confCode ของ guest ถัดไปมาใช้ผิดคน — เช็คแบบ unconditional (ไม่ใช่แค่ตอน
+      // homeLine ยังว่าง) เพราะ listLine/confCode ก็ห้ามลากข้าม guest เหมือนกัน
+      // root cause: "Guest -฿2,862.44 Paid Photography Adjustment" ดึง Home/room/
+      // confCode ของ J Barber (guest ถัดไป) มาใช้ แล้ว J Barber เองก็หายไปจาก payout
+      if (/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i.test(nl)) {
+        nextGuestIdx=j; break;
+      }
       if (!homeLine && /^Home\s*[•·\u2022\u00b7\-]/.test(nl)) {
         homeLine=nl;
         var dm=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
@@ -725,6 +737,16 @@ function parseAirbnbEmail(msg) {
         if (dm2) { checkIn=slashToISO(dm2[1]); checkOut=slashToISO(dm2[2]); }
         var rm2=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
         if (rm2) resDate=slashToISO(rm2[1]);
+      } else if (!homeLine&&/adjustment/i.test(nl)&&/(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)&&!/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)) {
+        // Generic "<description> Adjustment • date" line (e.g. "Paid Photography
+        // Adjustment • 7/23/2026") — single date only, no dash-range, and doesn't
+        // necessarily start with the word "Adjustment". Previously fell through
+        // every branch here and the scan continued into the next guest's block
+        // (caught now by the nextGuestIdx guard above, but tag it properly so it
+        // shows up as isAdj/'โอนแล้ว (Adjustment)' instead of a plain unmatched row).
+        homeLine=nl; isAdj=true;
+        var rm3=nl.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+        if (rm3) resDate=slashToISO(rm3[1]);
       } else if (!homeLine&&/(\d{1,2}\/\d{1,2}\/\d{4})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{4})/.test(nl)) {
         // Generic category line (e.g. "Cancellation Fee - 7/4/2026 - 7/7/2026")
         // ที่ไม่ใช่ Home/Resolution/Adjustment - กันไม่ให้ scan รั่วไปกินข้อมูลของ
@@ -769,13 +791,13 @@ function parseAirbnbEmail(msg) {
 
     // Adjustment lines (e.g. Photography Adjustment) have no Home/listLine to
     // derive a room from at all, so roomFromText would always return '?'.
-    // Default those specifically to DEFAULT_ADJUSTMENT_ROOM so the booking +
-    // invoice pipeline has something to attach to; leave every other case
-    // (Resolution Payouts, normal bookings) to resolve '?' the usual way.
+    // Leave rowRoom as '?' here — the batch auto-pick below (picking a room
+    // from another guest in the same batch/amount sent together) is more
+    // accurate than a static default, and only falls back to
+    // DEFAULT_ADJUSTMENT_ROOM if the batch has no other resolvable room.
     var rowRoom = roomFromText(listLine);
-    if (rowRoom === '?' && isAdj) rowRoom = DEFAULT_ADJUSTMENT_ROOM;
 
-    rows.push(makeRow('Airbnb',dt,bookingId,confCode,
+    var newRow = makeRow('Airbnb',dt,bookingId,confCode,
       guest, rowRoom,
       checkIn,checkOut,
       checkIn&&checkOut?nightsBetween(checkIn,checkOut):'',
@@ -785,15 +807,89 @@ function parseAirbnbEmail(msg) {
         ?'Resolution Payout | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
         :(isAdj
           ?'Adjustment | '+resDate+' | Batch THB '+batchTotal+' | ส่ง '+dt
-          :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt)));
+          :'Airbnb Batch THB '+batchTotal+' | ส่ง '+dt));
+    rows.push(newRow);
+    if (isAdj && !confCode && !isValidRoom(newRow.room)) unresolvedAdjRows.push(newRow);
 
     if (confCode) {
       var ci2=lines.indexOf(confCode,i+1);
       i=ci2>=0?ci2+1:i+5;
+    } else if (nextGuestIdx>=0) {
+      i=nextGuestIdx;
     } else { i+=4; }
   }
+
+  // Backfill: an isAdj row with no confCode has nothing of its own to key a
+  // room off (e.g. "Guest / Paid Photography Adjustment" — the email never
+  // says which room the photography was for). Per Nathan: just pick one of
+  // the rooms that came in the SAME batch (same amount sent together,
+  // batchTotal/dt match) rather than leaving it blank/unmatchable — good
+  // enough for recording the expense somewhere real instead of nowhere.
+  if (unresolvedAdjRows.length) {
+    var batchRoomCandidate = rows.find(function(r) {
+      return isValidRoom(r.room) && unresolvedAdjRows.indexOf(r) === -1;
+    });
+    unresolvedAdjRows.forEach(function(r) {
+      if (batchRoomCandidate) {
+        r.room = batchRoomCandidate.room;
+        r.notes += ' | ห้อง auto-pick จาก ' + batchRoomCandidate.guest + ' (ยอดเดียวกันในแบทช์)';
+      } else {
+        r.room = DEFAULT_ADJUSTMENT_ROOM;
+        r.notes += ' | ห้อง default (ไม่มีรายการอื่นในแบทช์ให้ auto-pick)';
+      }
+      // isAdj + ไม่มี confCode = ไม่มีอะไรให้ pipeline ปกติ (guest-name matching ใน
+      // loft-booking-invoice-todo) ใช้ผูกกับ booking ได้เลย ต้องแจ้งเตือนแทนที่จะ
+      // ปล่อยให้เงียบหายไปจนกว่าจะมีคนบังเอิญไปเจอเอง
+      _notifyAdminUnmatchedAdjustment_({
+        dt: r.date, guest: r.guest, net: r.net,
+        room: r.room,
+        pickedFromBatch: !!batchRoomCandidate,
+        note: r.notes
+      });
+    });
+  }
+
   Logger.log('parseAirbnb "'+msg.getSubject()+'": '+rows.length+' bookings');
   return rows;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Alert admin when a payout row can't be auto-linked to any booking:
+// isAdj (Resolution/Adjustment-style line) with no confCode found means
+// there's nothing for the existing guest-name-match pipeline in
+// loft-booking-invoice-todo (autoCreateApartmenteryInvoicesAndReceipts)
+// to key off — it'll just silently skip it forever. Previously this
+// meant these sat unnoticed until someone happened to spot them
+// manually (e.g. the 2026-07-23 "Guest / Paid Photography Adjustment"
+// row, which also needed manual linking as an other-charge line item
+// on an existing booking — see loft-booking-invoice-todo's
+// linkPhotographyAdjustment20260723.gs for that one-off).
+// ═══════════════════════════════════════════════════════════════
+function _notifyAdminUnmatchedAdjustment_(row) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var botUrl = props.getProperty('BOT_URL') || 'https://hotel-line-bot.onrender.com';
+    var adminToken = props.getProperty('ADMIN_TOKEN') || 'apt2025@secret';
+    var note = '⚠️ พบรายการ Adjustment ใน payout ที่ไม่มี conf code ของตัวเอง\n' +
+      'วันที่: ' + row.dt + '\n' +
+      'Guest: ' + row.guest + '\n' +
+      'ยอด: ' + row.net + ' บาท\n' +
+      (row.pickedFromBatch
+        ? 'ห้อง: ' + row.room + ' (auto-pick จากรายการอื่นในแบทช์เดียวกัน)\n'
+        : 'ห้อง: ' + row.room + ' (default — ไม่มีรายการอื่นในแบทช์ให้ auto-pick, เช็คซ้ำอีกที)\n') +
+      'หมายเหตุ: ' + row.note + '\n' +
+      'ยังต้องสร้าง invoice เป็น other charge บน booking ล่าสุดของห้องนี้เอง ' +
+      '(ดู linkPhotographyAdjustment20260723.gs เป็นตัวอย่าง)';
+    UrlFetchApp.fetch(botUrl + '/api/send-admin-alert', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ note: note }),
+      headers: { 'x-admin-token': adminToken },
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    Logger.log('_notifyAdminUnmatchedAdjustment_ failed: ' + e.message);
+  }
 }
 
 function decodeQP(s) {
@@ -2316,6 +2412,74 @@ function fixNihel0704Payout() {
 // matching. Call once via: <webapp-url>?action=fixNicco0705  then
 // delete this block.
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-07-23 batch (Airbnb Batch THB 5613.97)
+// Root cause: parseAirbnbEmail() scanned past the unrecognized
+// "Paid Photography Adjustment • 7/23/2026" + "-" lines for the "Guest"
+// -฿2,862.44 entry, and kept scanning straight into J Barber's own
+// Home/room/confCode block, wrongly tagging the "Guest" adjustment row
+// with J Barber's confCode HMYPAHXH5B/room/dates — then jumped past
+// J Barber's own guest+amount line entirely, so his ฿3,824.14 row never
+// got created. (Fixed above: scan now stops at the next guest's line.)
+// This backfills the missing J Barber row, corrects the "Guest" row to
+// be the room-300 photography adjustment it actually is (per owner),
+// and fixes Mike Ubaydullaev's room (email said "The Loft Allure", not
+// Legacy/214 — his current stay is 203 Allure 2026-07-22→07-31).
+// Call once via: <webapp-url>?action=fixJBarber0723   then delete this block.
+// ═══════════════════════════════════════════════════════════════
+function fixJBarber0723Payout() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var already = data.some(function(row) {
+    return (row[C.bid - 1] || '').toString() === 'ABB-HMYPAHXH5B' &&
+           (row[C.guest - 1] || '').toString() === 'J Barber';
+  });
+  if (already) return 'already fixed, skipped';
+
+  var guestRowIdx = -1, mikeRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid = (data[i][C.bid - 1] || '').toString();
+    var guest = (data[i][C.guest - 1] || '').toString();
+    if (bid === 'ABB-HMYPAHXH5B' && guest === 'Guest') guestRowIdx = i + 2;
+    if (bid === 'ABB-HMDZF3TSHZ' && guest === 'Mike Ubaydullaev') mikeRowIdx = i + 2;
+  }
+  if (guestRowIdx === -1) return 'mangled Guest row not found (already handled?)';
+
+  // 1) Fix the "Guest" row: it's a photography adjustment with no room of its
+  // own — per the batch-room auto-pick rule, tag it with room 214 (J Barber,
+  // the first row in this same batch with a resolved room). The actual
+  // invoice gets linked to J Barber's booking 327170 separately, in
+  // loft-booking-invoice-todo's linkPhotographyAdjustment20260723.gs.
+  sheet.getRange(guestRowIdx, 1, 1, HEADERS.length).setValues([[
+    '2026-07-23','Airbnb','ABB-20260723-PHOTO','','Guest','214','','','',
+    5613.97,'',-2862.44,'โอนแล้ว (Adjustment)',
+    'Adjustment: Paid Photography Adjustment | ห้อง auto-pick จาก J Barber (ยอดเดียวกันในแบทช์) | Batch THB 5613.97 | ส่ง 2026-07-23'
+  ]]);
+
+  // 2) Insert the missing J Barber row right after it
+  sheet.insertRowAfter(guestRowIdx);
+  sheet.getRange(guestRowIdx + 1, 1, 1, HEADERS.length).setValues([[
+    '2026-07-23','Airbnb','ABB-HMYPAHXH5B','HMYPAHXH5B','J Barber','214',
+    '2026-07-22','2026-07-31',9,5613.97,'',3824.14,'โอนแล้ว',
+    'Airbnb Batch THB 5613.97 | ส่ง 2026-07-23'
+  ]]);
+  if (mikeRowIdx > guestRowIdx) mikeRowIdx++; // row indices below the insert shift down by 1
+
+  // 3) Fix Mike Ubaydullaev's room (email said "The Loft Allure", not Legacy/214)
+  if (mikeRowIdx !== -1) {
+    sheet.getRange(mikeRowIdx, C.room, 1, 1).setValue('203');
+  }
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('Fixed 2026-07-23 J Barber/Guest payout batch', 'Done', 5);
+  return 'ok: fixed Guest(room 214 adjustment, auto-picked) row, backfilled J Barber row' +
+    (mikeRowIdx !== -1 ? ', fixed Mike Ubaydullaev room -> 203' : ' (Mike Ubaydullaev row not found to fix room)');
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
@@ -2407,6 +2571,13 @@ function doGet(e){
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width">' +
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNihel0704Payout(): ' + msg + '</body>'
+    );
+  }
+  if (p.action==='fixJBarber0723') {
+    var msg3 = fixJBarber0723Payout();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixJBarber0723Payout(): ' + msg3 + '</body>'
     );
   }
   if (p.action==='fixNicco0705') {
