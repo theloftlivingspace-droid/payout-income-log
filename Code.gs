@@ -2244,6 +2244,25 @@ function flagStaleUnmatchedAirbnbPayouts() {
 
   // Un-flag any row that's actually matched but still carries the stale
   // mark from a previous (buggy) run of this function.
+  // DIAGNOSTIC — remove once the un-flag mismatch is understood. Logs
+  // every intermediate condition for the Johnny Brillantes row
+  // unconditionally (not gated behind the early-return guards below) to
+  // find exactly which check is causing it to be skipped.
+  data.forEach(function(row, i) {
+    var guest = (row[C.guest-1] || '').toString().trim();
+    if (guest !== 'Johnny Brillantes') return;
+    var ota2   = (row[C.ota-1] || '').toString().trim();
+    var notes2 = (row[C.notes-1] || '').toString();
+    var conf2  = (row[C.conf-1] || '').toString().trim();
+    Logger.log('flagStaleUnmatchedAirbnbPayouts: DEBUG2 row ' + (i+2) +
+      ' ota=' + JSON.stringify(ota2) +
+      ' isAirbnb=' + (ota2 === 'Airbnb') +
+      ' conf=' + JSON.stringify(conf2) +
+      ' hasStaleMark=' + (notes2.indexOf(AIRBNB_STALE_MARK) >= 0) +
+      ' inMatchedConfs=' + (!!matchedConfs[conf2]) +
+      ' notes=' + JSON.stringify(notes2));
+  });
+
   var unflagged = 0;
   data.forEach(function(row, i) {
     var ota = (row[C.ota-1] || '').toString().trim();
