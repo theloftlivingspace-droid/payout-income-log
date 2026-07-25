@@ -3680,6 +3680,8 @@ function syncSCBTotalRooms() {
   var pNotes = C.notes-1;
   var pBid   = C.bid-1;
   var pConf  = C.conf-1;
+  var pGuest = C.guest-1;
+  var pNet   = C.net-1;
   var fixed  = 0;
 
   // build lookup: bid and conf → room
@@ -3690,82 +3692,82 @@ function syncSCBTotalRooms() {
     if (fx.conf) manualConfs[fx.conf] = fx.room;
   });
 
-  var i = 0;
-  while (i < data.length) {
-    var ota   = (data[i][pOTA]   || '').toString().trim();
-    var notes = (data[i][pNotes] || '').toString().trim();
-    if (ota.startsWith('SCB') && !notes.startsWith('\u21b3')) {
-      var bid  = (data[i][pBid]  || '').toString().trim();
-      var conf = (data[i][pConf] || '').toString().trim();
+  // Group every SCB row by bid first, independent of physical row position.
+  // The previous version scanned sub-rows assuming they sit immediately
+  // after their total row (breaking the scan the moment it hit a non-SCB
+  // row or a different bid) — but sortPayoutByOTA can interleave a
+  // different batch's rows in between, silently truncating the scan and
+  // undercounting rooms. Confirmed bug: the 2026-07-23 batch total row
+  // collapsed from "214, 203" down to just "214" this way once reordering
+  // separated its sub-rows. Grouping by bid first removes that assumption
+  // entirely.
+  var byBid = {};
+  data.forEach(function(row, idx) {
+    var ota = (row[pOTA] || '').toString().trim();
+    if (!ota.startsWith('SCB')) return;
+    var bid = (row[pBid] || '').toString().trim();
+    if (!bid) return;
+    if (!byBid[bid]) byBid[bid] = [];
+    byBid[bid].push({
+      idx: idx,
+      notes: (row[pNotes] || '').toString().trim(),
+      net: parseFloat((row[pNet] || '0').toString().replace(/,/g, '')) || 0,
+      room: (row[pRoom] || '').toString().trim(),
+      guest: (row[pGuest] || '').toString().trim(),
+    });
+  });
 
-      // skip if bid OR conf is pinned in MANUAL_ROOM_FIXES
-      if (manualBids[bid] !== undefined || manualConfs[conf] !== undefined) {
-        Logger.log('syncSCBTotalRooms: skip manual-fixed bid=' + bid + ' conf=' + conf);
-        var j = i + 1;
-        while (j < data.length) {
-          var sn = (data[j][pNotes] || '').toString().trim();
-          var so = (data[j][pOTA]   || '').toString().trim();
-          if (!so.startsWith('SCB') || !sn.startsWith('\u21b3')) break;
-          j++;
-        }
-        i = j;
-        continue;
-      }
+  Object.keys(byBid).forEach(function(bid) {
+    var rows = byBid[bid];
+    var checkRows = rows.filter(function(r) { return r.notes.startsWith('\u2705'); });
+    if (checkRows.length === 0) return;             // no total row for this bid yet (still รอ match)
+    // the total row is whichever ✅ row has the largest net (matches the
+    // full SCB deposit amount); any other ✅ row is an old-format sub-row
+    checkRows.sort(function(a, b) { return b.net - a.net; });
+    var totalRow = checkRows[0];
 
-      // collect rooms from sub-rows ONLY, keyed by guest name so we can
-      // re-align them to the total row's guest order below (sub-rows can
-      // get physically reordered by sortPayoutByOTA, independent of the
-      // guest order baked into the total row's "ชื่อแขก"/note columns —
-      // joining by scan order alone causes guest[i] ↔ room[i] mismatches).
-      var rooms = [];
-      var roomByGuest = {};
-      var totalNet = parseFloat((data[i][C.net-1]||'0').toString().replace(/,/g,''))||0;
-      var totalRoom = (data[i][pRoom] || '').toString().trim();
-      var totalGuestField = (data[i][C.guest-1] || '').toString().trim();
-      var j = i + 1;
-      while (j < data.length) {
-        var subNotes = (data[j][pNotes] || '').toString().trim();
-        var subOTA   = (data[j][pOTA]   || '').toString().trim();
-        var subNet   = parseFloat((data[j][C.net-1]||'0').toString().replace(/,/g,''))||0;
-        // sub-row: same SCB OTA, same bid, net < total, starts with ↳ OR ✅ (old format)
-        if (!subOTA.startsWith('SCB')) break;
-        var subBid = (data[j][pBid]||'').toString().trim();
-        if (subBid !== bid) break;
-        var isSubRow = subNotes.startsWith('\u21b3') || 
-                       (subNotes.startsWith('\u2705') && subNet < totalNet - 0.01);
-        if (!isSubRow) break;
-        var subRoom = (data[j][pRoom] || '').toString().trim();
-        if (subRoom && subRoom !== '?' && !subRoom.includes(',') && rooms.indexOf(subRoom) < 0) rooms.push(subRoom);
-        var subGuest = (data[j][C.guest-1] || '').toString().trim();
-        if (subGuest && subRoom && subRoom !== '?' && !(subGuest in roomByGuest)) roomByGuest[subGuest] = subRoom;
-        j++;
-      }
-      var hadSubRows = (j > i + 1);
-      if (hadSubRows && rooms.length > 1) {
-        // re-derive room order from the total row's existing guest order
-        // (falls back to scan order for any guest we couldn't match)
-        var guestOrder = totalGuestField ? totalGuestField.split(',').map(function(g){ return g.trim(); }) : [];
-        var orderedRooms = [];
-        guestOrder.forEach(function(g) {
-          var r = roomByGuest[g];
-          if (r && orderedRooms.indexOf(r) < 0) orderedRooms.push(r);
-        });
-        // append any rooms we couldn't align via guest name (safety net)
-        rooms.forEach(function(r) { if (orderedRooms.indexOf(r) < 0) orderedRooms.push(r); });
-        var merged = orderedRooms.length === rooms.length ? orderedRooms.join(', ') : rooms.join(', ');
-        if (merged !== totalRoom) {
-          sheet.getRange(i+2, pRoom+1).setValue(merged);
-          data[i][pRoom] = merged;
-          fixed++;
-          Logger.log('syncSCBTotalRooms: row '+(i+2)+' → '+merged);
-        }
-      }
-      i = j;
-    } else {
-      i++;
+    var conf = (data[totalRow.idx][pConf] || '').toString().trim();
+    if (manualBids[bid] !== undefined || manualConfs[conf] !== undefined) {
+      Logger.log('syncSCBTotalRooms: skip manual-fixed bid=' + bid + ' conf=' + conf);
+      return;
     }
-  }
-  Logger.log('syncSCBTotalRooms: '+fixed+' rows updated');
+
+    var subRows = rows.filter(function(r) {
+      if (r.idx === totalRow.idx) return false;
+      return r.notes.startsWith('\u21b3') ||
+        (r.notes.startsWith('\u2705') && r.net < totalRow.net - 0.01);
+    });
+    if (subRows.length === 0) return;
+
+    // collect rooms from sub-rows ONLY, keyed by guest name so we can
+    // re-align them to the total row's guest order below (guest[i] ↔
+    // room[i] must be matched by name, not scan order)
+    var rooms = [];
+    var roomByGuest = {};
+    subRows.forEach(function(r) {
+      if (r.room && r.room !== '?' && !r.room.includes(',') && rooms.indexOf(r.room) < 0) rooms.push(r.room);
+      if (r.guest && r.room && r.room !== '?' && !(r.guest in roomByGuest)) roomByGuest[r.guest] = r.room;
+    });
+    if (rooms.length <= 1) return;
+
+    var totalGuestField = (data[totalRow.idx][pGuest] || '').toString().trim();
+    var guestOrder = totalGuestField ? totalGuestField.split(',').map(function(g) { return g.trim(); }) : [];
+    var orderedRooms = [];
+    guestOrder.forEach(function(g) {
+      var r = roomByGuest[g];
+      if (r && orderedRooms.indexOf(r) < 0) orderedRooms.push(r);
+    });
+    // append any rooms we couldn't align via guest name (safety net)
+    rooms.forEach(function(r) { if (orderedRooms.indexOf(r) < 0) orderedRooms.push(r); });
+    var merged = orderedRooms.length === rooms.length ? orderedRooms.join(', ') : rooms.join(', ');
+    if (merged !== totalRow.room) {
+      sheet.getRange(totalRow.idx + 2, pRoom + 1).setValue(merged);
+      fixed++;
+      Logger.log('syncSCBTotalRooms: row ' + (totalRow.idx + 2) + ' → ' + merged);
+    }
+  });
+
+  Logger.log('syncSCBTotalRooms: ' + fixed + ' rows updated');
 }
 
 // ═══════════════════════════════════════════════════════════════
