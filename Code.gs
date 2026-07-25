@@ -2216,6 +2216,50 @@ function flagStaleUnmatchedAirbnbPayouts() {
   if (last < 2) return;
   var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
 
+  // Build the set of confCodes that already have a corresponding SCB
+  // match — a ↳ sub-row's Conf. Code column always equals the original
+  // Airbnb row's own confCode (see buildSCBRows). This is the ONLY
+  // reliable signal for "already matched": the original row's own status
+  // column is NOT reliable, because matchSCBtoOTA's post-match "update"
+  // step sets it to 'โอนแล้ว' — the exact same value it already had
+  // *before* matching — so checking status.indexOf('✅') here never
+  // actually excludes a matched row. Confirmed bug: all 150 currently-
+  // flagged rows include several that already have a complete ✅ Matched
+  // total row elsewhere in the sheet (e.g. SCB-2026-06-23-10084.76 /
+  // Johnny Brillantes + Por, matched weeks ago) — every Airbnb payout
+  // crossing the 30-day threshold was getting flagged regardless of
+  // actual match status.
+  var matchedConfs = {};
+  data.forEach(function(row) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    if (!ota.startsWith('SCB')) return;
+    var notes = (row[C.notes-1] || '').toString();
+    if (notes.indexOf('\u21b3') !== 0) return;   // only ↳ sub-rows carry a single original confCode
+    var conf = (row[C.conf-1] || '').toString().trim();
+    if (conf) matchedConfs[conf] = true;
+  });
+
+  // Un-flag any row that's actually matched but still carries the stale
+  // mark from a previous (buggy) run of this function.
+  var unflagged = 0;
+  data.forEach(function(row, i) {
+    var ota = (row[C.ota-1] || '').toString().trim();
+    if (ota !== 'Airbnb') return;
+    var notes = (row[C.notes-1] || '').toString();
+    if (notes.indexOf(AIRBNB_STALE_MARK) < 0) return;
+    var conf = (row[C.conf-1] || '').toString().trim();
+    if (!conf || !matchedConfs[conf]) return;   // genuinely still unmatched — leave the flag
+    var cleaned = notes.split(' | ').filter(function(part) {
+      return part.indexOf(AIRBNB_STALE_MARK) === -1;
+    }).join(' | ');
+    var r = i + 2;
+    sheet.getRange(r, C.notes).setValue(cleaned);
+    sheet.getRange(r, 1, 1, HEADERS.length).setBackground(null);
+    data[i][C.notes - 1] = cleaned;
+    unflagged++;
+  });
+  if (unflagged > 0) Logger.log('flagStaleUnmatchedAirbnbPayouts: un-flagged ' + unflagged + ' rows that were actually already matched');
+
   var today = new Date();
   var flagged = [];
 
@@ -2223,8 +2267,11 @@ function flagStaleUnmatchedAirbnbPayouts() {
     var ota = (row[C.ota-1] || '').toString().trim();
     if (ota !== 'Airbnb') return;
 
+    var conf = (row[C.conf-1] || '').toString().trim();
+    if (conf && matchedConfs[conf]) return;              // already SCB-matched → fine
+
     var status = (row[C.status-1] || '').toString();
-    if (status.indexOf('✅') === 0) return;              // already matched → fine
+    if (status.indexOf('✅') === 0) return;              // defensive: honor an explicit ✅ status if ever set
     if (status.indexOf('โอนแล้ว') !== 0) return;          // not a "money sent" row (e.g. refund/adjustment note differs) — adjust if needed
 
     var notes = (row[C.notes-1] || '').toString();
