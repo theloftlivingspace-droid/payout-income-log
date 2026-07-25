@@ -2238,6 +2238,9 @@ function flagStaleUnmatchedAirbnbPayouts() {
     var conf = (row[C.conf-1] || '').toString().trim();
     if (conf) matchedConfs[conf] = true;
   });
+  // DIAGNOSTIC — remove once the un-flag mismatch is understood
+  Logger.log('flagStaleUnmatchedAirbnbPayouts: matchedConfs size=' + Object.keys(matchedConfs).length +
+    ', has HMFNWRKAHD=' + (!!matchedConfs['HMFNWRKAHD']) + ', has HM3DJ3XWXT=' + (!!matchedConfs['HM3DJ3XWXT']));
 
   // Un-flag any row that's actually matched but still carries the stale
   // mark from a previous (buggy) run of this function.
@@ -2248,6 +2251,11 @@ function flagStaleUnmatchedAirbnbPayouts() {
     var notes = (row[C.notes-1] || '').toString();
     if (notes.indexOf(AIRBNB_STALE_MARK) < 0) return;
     var conf = (row[C.conf-1] || '').toString().trim();
+    // DIAGNOSTIC — remove once the un-flag mismatch is understood
+    if (conf === 'HMFNWRKAHD' || conf === 'HM3DJ3XWXT') {
+      Logger.log('flagStaleUnmatchedAirbnbPayouts: DEBUG row ' + (i+2) + ' conf=' + JSON.stringify(conf) +
+        ' inMatchedConfs=' + (!!matchedConfs[conf]) + ' notes=' + JSON.stringify(notes));
+    }
     if (!conf || !matchedConfs[conf]) return;   // genuinely still unmatched — leave the flag
     var cleaned = notes.split(' | ').filter(function(part) {
       return part.indexOf(AIRBNB_STALE_MARK) === -1;
