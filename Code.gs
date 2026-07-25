@@ -1077,9 +1077,10 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var co     = dateStr(detail.co);
     var nts    = detail.nights || nightsBetween(ci, co) || '';
 
-    // ✅ fallback จาก Sheet1 ถ้า ci/co ว่าง
+    // ✅ fallback จาก Sheet1 ถ้า ci/co ว่าง — exact name match ก่อน, แล้วค่อย
+    // partial-name (unambiguous only) ถ้า OTA ส่งชื่อมาสั้นกว่าที่ Sheet1 เก็บ
     if (!ci || !co) {
-      var s1 = s1Map[normG(guest)];
+      var s1 = s1Map.exact[normG(guest)] || lookupSheet1ByPartialName_(guest, s1Map);
       if (s1) { ci = s1.ci; co = s1.co; nts = s1.nights || nightsBetween(ci, co); }
     }
 
@@ -1104,9 +1105,10 @@ function buildSCBRows(scbOTA, scbDate, scbBid, scbAmt, scbAcct,
     var ci    =dateStr(detail.ci);
     var co    =dateStr(detail.co);
     var nts   =detail.nights||'';
-    // fallback: Sheet1 ci/co/room ถ้า detail ไม่ครบ
+    // fallback: Sheet1 ci/co/room ถ้า detail ไม่ครบ — exact match ก่อน แล้ว
+    // ค่อย partial-name (unambiguous only)
     if (!ci||!co||room==='?') {
-      var s1e=s1Map[normG(guest)];
+      var s1e=s1Map.exact[normG(guest)] || lookupSheet1ByPartialName_(guest, s1Map);
       if (s1e) {
         if (!ci) ci=s1e.ci;
         if (!co) co=s1e.co;
@@ -1192,18 +1194,21 @@ function dateStr(v) {
 }
 
 // ✅ NEW: Sheet1 ci/co/room fallback map
+// Returns { exact: {normG(fullName) -> {ci,co,nights,room}}, byWord: {word -> [normG keys]} }
 function getSheet1CiCoMap() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var s1 = ss.getSheets()[0];
   var data = s1.getDataRange().getValues();
   var map = {};
+  var byWord = {};
   var h = data[0].map(function(v){ return v.toString().trim().toLowerCase(); });
   var cG  = h.indexOf('ชื่อแขก');
   var cCI = h.indexOf('เช็คอิน');
   var cCO = h.indexOf('เช็คเอาท์');
   var cR  = h.indexOf('เลขห้อง');
   for (var i = 1; i < data.length; i++) {
-    var g  = normG((data[i][cG]  || '').toString());
+    var gRaw = (data[i][cG] || '').toString();
+    var g  = normG(gRaw);
     var ci = dateStr(data[i][cCI]);
     var co = dateStr(data[i][cCO]);
     var rm = cR >= 0 ? (data[i][cR] || '').toString().trim() : '';
@@ -1212,9 +1217,44 @@ function getSheet1CiCoMap() {
     if (g && ci && co) {
       map[g] = { ci: ci, co: co, nights: nightsBetween(ci, co),
                  room: rmNum ? rmNum[1] : '' };
+      // Also index each individual name word (e.g. "Chani Boran" -> 'chani',
+      // 'boran') so a partial OTA guest name can still find this booking via
+      // lookupSheet1ByPartialName_() below. Without this, normG()'s exact
+      // bag-of-words match misses whenever the OTA payout line carries a
+      // shortened name (e.g. Airbnb Resolution Payout lines sometimes only
+      // give the first name, "Chani" vs Sheet1's "Chani Boran") — silently
+      // leaving ci/co blank, which then breaks downstream date-based
+      // matching in loft-booking-invoice-todo (bug: 2026-07-24 Chani
+      // Resolution Payout ฿700.14, room resolved fine but checkin/checkout
+      // stayed blank, so it never linked up in the dashboard's Booking tab).
+      gRaw.toLowerCase().split(/[\s,\/\\]+/).forEach(function(w) {
+        w = w.trim();
+        if (w.length < 3) return;
+        if (!byWord[w]) byWord[w] = [];
+        if (byWord[w].indexOf(g) === -1) byWord[w].push(g);
+      });
     }
   }
-  return map;
+  return { exact: map, byWord: byWord };
+}
+
+// Falls back to a partial-name match against Sheet1 when the exact
+// normG() bag-of-words match misses — but ONLY when every matching name
+// word points to the same Sheet1 booking. If two different Sheet1 guests
+// share a name part (e.g. two different guests both named "Nick" staying
+// around the same time), this deliberately returns null rather than
+// guessing which one is right — a wrong ci/co is worse than a blank one.
+function lookupSheet1ByPartialName_(guestRaw, s1Index) {
+  var words = guestRaw.toString().toLowerCase().split(/[\s,\/\\]+/)
+    .map(function(w){ return w.trim(); })
+    .filter(function(w){ return w.length >= 3; });
+  var candidateKeys = {};
+  words.forEach(function(w) {
+    (s1Index.byWord[w] || []).forEach(function(k){ candidateKeys[k] = true; });
+  });
+  var keys = Object.keys(candidateKeys);
+  if (keys.length !== 1) return null;  // 0 = no match, >1 = ambiguous — don't guess either way
+  return s1Index.exact[keys[0]] || null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2416,6 +2456,45 @@ function fixNihel0704Payout() {
 // matching. Call once via: <webapp-url>?action=fixNicco0705  then
 // delete this block.
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: Chani's Resolution Payout (SCB-2026-07-24-700.14) —
+// ci/co ended up blank on the already-matched row because normG()'s exact
+// bag-of-words match failed ("Chani" vs Sheet1's "Chani Boran") before the
+// partial-name fallback existed (see getSheet1CiCoMap/lookupSheet1ByPartialName_
+// above). The general fix only helps future matchSCBtoOTA runs — this row
+// is already ✅ Matched so it won't be touched again. Backfills ci/co
+// directly from the main-stay Airbnb row (same confCode HM53FQMSC9).
+// Call once via: <webapp-url>?action=fixChaniResolution0724   then delete.
+// ═══════════════════════════════════════════════════════════════
+function fixChaniResolutionPayout0724() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var last = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+
+  var targetRowIdx = -1;
+  for (var i = 0; i < data.length; i++) {
+    var bid = (data[i][C.bid - 1] || '').toString().trim();
+    if (bid === 'SCB-2026-07-24-700.14') { targetRowIdx = i + 2; break; }
+  }
+  if (targetRowIdx === -1) {
+    Logger.log('fixChaniResolutionPayout0724: target row not found (already fixed?)');
+    return 'target row not found (already fixed?)';
+  }
+
+  sheet.getRange(targetRowIdx, C.ci, 1, 1).setValue('2026-07-23');
+  sheet.getRange(targetRowIdx, C.co, 1, 1).setValue('2026-08-24');
+  sheet.getRange(targetRowIdx, C.nights, 1, 1).setValue(32);
+  rebuildBankLedger();
+  exportToGitHub();
+
+  var result = 'ok: backfilled ci/co/nights on row ' + targetRowIdx + ', rebuilt Bank_Ledger + exported';
+  Logger.log('fixChaniResolutionPayout0724: ' + result);
+  return result;
+}
+
 function fixNicco0705DuplicateRow() {
   var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sheet = ss.getSheetByName(TAB_NAME);
