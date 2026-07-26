@@ -3711,6 +3711,20 @@ function styleSheet1(){
 
     // Note highlight
     if(note) sh.getRange(r,7).setBackground('#fff8e1').setFontColor('#5d4037').setFontStyle('italic');
+
+    // Apartmentery Booking ID (col I) — was inheriting only the base
+    // zebra-stripe background with no styling of its own, unlike every
+    // other data column here. Center it and flag rows that should have a
+    // linked Apartmentery booking but don't (skip cancelled/รอยืนยัน rows,
+    // where a missing ID is expected, not a problem).
+    var apartId = String(row[8]||'').trim();
+    var isCancelledOrPending = cvL.indexOf('cancel')>=0 || cvL.indexOf('ยกเลิก')>=0 || cv==='รอยืนยัน';
+    if (apartId) {
+      sh.getRange(r,9).setHorizontalAlignment('center').setFontColor('#555555').setFontFamily('Roboto Mono');
+    } else if (!isCancelledOrPending) {
+      sh.getRange(r,9).setBackground('#f8d7da').setFontColor('#721c24')
+        .setHorizontalAlignment('center').setFontStyle('italic');
+    }
   });
 
   // col H วันจอง — center + small gray
