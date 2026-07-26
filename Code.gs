@@ -2234,9 +2234,22 @@ function flagStaleUnmatchedAirbnbPayouts() {
     var ota = (row[C.ota-1] || '').toString().trim();
     if (!ota.startsWith('SCB')) return;
     var notes = (row[C.notes-1] || '').toString();
-    if (notes.indexOf('\u21b3') !== 0) return;   // only ↳ sub-rows carry a single original confCode
+    // ↳ sub-rows carry one original confCode each (multi-guest batches).
+    // ✅ rows carry either one confCode directly (single-guest batches —
+    // buildSCBRows' single-guest branch never creates a ↳ sub-row at all,
+    // so checking only for ↳ silently missed every single-guest match:
+    // confirmed bug, e.g. Huynh Duong Luong / SCB-2026-06-25-2368.44 was
+    // fully ✅ matched but kept showing the stale-unmatched flag forever)
+    // or a comma-joined list of confCodes (multi-guest total rows).
+    var isSub   = notes.indexOf('\u21b3') === 0;
+    var isTotal = notes.indexOf('\u2705') === 0;
+    if (!isSub && !isTotal) return;
     var conf = (row[C.conf-1] || '').toString().trim();
-    if (conf) matchedConfs[conf] = true;
+    if (!conf) return;
+    conf.split(',').forEach(function(c) {
+      c = c.trim();
+      if (c) matchedConfs[c] = true;
+    });
   });
 
   // Un-flag any row that's actually matched but still carries the stale
