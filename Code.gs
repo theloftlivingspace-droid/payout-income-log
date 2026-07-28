@@ -3664,6 +3664,8 @@ function styleSheet1(){
   if(lastRow<2) return;
   var styleData=sh.getRange(2,1,lastRow-1,lastCol).getValues();
 
+  var colIExpected=[]; // [{row, apartId, isCancelledOrPending}] — filled below, verified after the loop
+
   styleData.forEach(function(row,i){
     var r=i+2;
     var cv=String(row[0]||'').trim();
@@ -3726,7 +3728,30 @@ function styleSheet1(){
       sh.getRange(r,9).setBackground('#f8d7da').setFontColor('#721c24')
         .setHorizontalAlignment('center').setFontStyle('italic');
     }
+    colIExpected.push({row:r, apartId:apartId, cancelled:isCancelledOrPending});
   });
+
+  // ── Step 4b: Audit col I — verify actual font colors match intent ──
+  // Runs every time styleSheet1() runs (manual edit, cron sync, LINE bot
+  // room-assign, cancelBooking_, etc. all funnel through here). Cancelled/
+  // รอยืนยัน rows with an Apartmentery ID must NOT be forced gray #555555 —
+  // that was the original bug. Flags anything that still slips through.
+  (function auditColumnI_(){
+    if (!colIExpected.length) return;
+    var colIColors = sh.getRange(2,9,lastRow-1,1).getFontColors();
+    var mismatches = [];
+    colIExpected.forEach(function(exp){
+      var actual = colIColors[exp.row-2][0];
+      if (exp.apartId && exp.cancelled && actual === '#555555') {
+        mismatches.push(exp.row + ' (cancelled/รอยืนยัน แต่สี I ยังเป็นเทา #555555)');
+      }
+    });
+    if (mismatches.length) {
+      Logger.log('styleSheet1 AUDIT ⚠️ col I ผิด ' + mismatches.length + ' แถว: ' + mismatches.slice(0,20).join(', '));
+    } else {
+      Logger.log('styleSheet1 AUDIT ✅ col I ถูกต้องทุกแถว (' + colIExpected.length + ' แถว)');
+    }
+  })();
 
   // col H วันจอง — center + small gray
   sh.getRange(2,8,lastRow-1,1).setHorizontalAlignment('center').setFontColor('#666666').setFontSize(9);
