@@ -3720,7 +3720,8 @@ function styleSheet1(){
     var apartId = String(row[8]||'').trim();
     var isCancelledOrPending = cvL.indexOf('cancel')>=0 || cvL.indexOf('ยกเลิก')>=0 || cv==='รอยืนยัน';
     if (apartId) {
-      sh.getRange(r,9).setHorizontalAlignment('center').setFontColor('#555555').setFontFamily('Roboto Mono');
+      var idRange = sh.getRange(r,9).setHorizontalAlignment('center').setFontFamily('Roboto Mono');
+      if (!isCancelledOrPending) idRange.setFontColor('#555555');
     } else if (!isCancelledOrPending) {
       sh.getRange(r,9).setBackground('#f8d7da').setFontColor('#721c24')
         .setHorizontalAlignment('center').setFontStyle('italic');
