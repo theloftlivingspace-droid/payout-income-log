@@ -4784,6 +4784,7 @@ function fixBookingDatesFromEmail() {
   }
 
   SpreadsheetApp.flush();
+  styleSheet1();
   Logger.log('fixBookingDatesFromEmail: done');
 }
 

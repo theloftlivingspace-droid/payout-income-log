@@ -449,6 +449,7 @@ function setNote(resId, note) {
     if (mode !== 'bookings') continue;
     if (String(rows[i][5] || '').trim() === resId) {
       sheet.getRange(i + 1, 7).setValue(note);   // col G = index 6 = column 7
+      styleSheet1();
       return { ok: true };
     }
   }
