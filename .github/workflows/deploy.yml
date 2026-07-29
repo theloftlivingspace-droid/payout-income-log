@@ -33,4 +33,10 @@ jobs:
         run: clasp push --force 2>&1 || (echo "=== clasp push failed ===" && exit 1)
 
       - name: Deploy new version (update existing Web App deployment)
-        run: clasp deploy --deploymentId AKfycbz3r-wEAImmD3jJUhTE58Z6IOQV_R1Q0iYs5imf8l4f5EUqZEdIKjQJzF4HuENgiJ4 --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
+        # NOTE: this MUST match the deployment ID baked into every consumer's
+        # GAS_STYLE_URL / PAYOUT_GAS_URL (hotel-line-bot bot.js + email-sync.js,
+        # loft-booking-invoice-todo Code.gs). Previously pointed at an orphaned
+        # deployment (AKfycbz3r-wE...) that nothing calls, so CI/CD silently
+        # deployed to a webapp URL no consumer ever hits — every push looked
+        # successful but the live /exec endpoint kept running stale code.
+        run: clasp deploy --deploymentId AKfycbyAP9Z_pIlKrXv9AOXwDhY0wNVSSFL0vU8VuH0SssFyxretRyt9CJNjxVZOLN3eFjs --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
