@@ -2713,33 +2713,44 @@ function doGetOriginal(e){
     .setMimeType(ContentService.MimeType.JSON);
 }
 function getDashboardData(){
-  var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
-  var sheet1=ss.getSheetByName('Sheet1');
-  var data1=sheet1.getDataRange().getValues();
-  var bookings=[],mode='start';
-  for (var i=0;i<data1.length;i++){
-    var row=data1[i], c0=String(row[0]||'').trim();
-    if (c0==='เลขห้อง'){mode='bookings';continue;}
-    if (mode==='bookings'&&c0)
-      bookings.push({room:c0,guest:String(row[1]||''),checkin:String(row[2]||''),
-        checkout:String(row[3]||''),channel:String(row[4]||''),
-        resId:String(row[5]||''),note:String(row[6]||'')});
+  try {
+    var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet1=ss.getSheetByName('Sheet1');
+    var bookings=[];
+    if (sheet1) {
+      var data1=sheet1.getDataRange().getValues();
+      var mode='start';
+      for (var i=0;i<data1.length;i++){
+        var row=data1[i], c0=String(row[0]||'').trim();
+        if (c0==='เลขห้อง'){mode='bookings';continue;}
+        if (mode==='bookings'&&c0)
+          bookings.push({room:c0,guest:String(row[1]||''),checkin:String(row[2]||''),
+            checkout:String(row[3]||''),channel:String(row[4]||''),
+            resId:String(row[5]||''),note:String(row[6]||'')});
+      }
+    }
+    var sheetL=ss.getSheetByName('Bank_Ledger');
+    var ledger=[];
+    if (sheetL && sheetL.getLastRow()>1) {
+      var dataL=sheetL.getDataRange().getValues();
+      var seen={};
+      for (var j=1;j<dataL.length;j++){
+        var rowL=dataL[j], bid=String(rowL[2]||'').trim();
+        if (!bid||seen[bid]) continue; seen[bid]=true;
+        ledger.push({date:String(rowL[0]||''),ota:String(rowL[1]||''),bookingId:bid,
+          guest:String(rowL[4]||''),room:String(rowL[5]||''),
+          checkin:String(rowL[6]||''),checkout:String(rowL[7]||''),
+          nights:parseInt(rowL[8])||0,gross:parseFloat(String(rowL[9]).replace(/,/g,''))||0,
+          commission:parseFloat(String(rowL[10]).replace(/,/g,''))||0,
+          net:parseFloat(String(rowL[11]).replace(/,/g,''))||0,status:String(rowL[12]||'')});
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ok:true,bookings:bookings,ledger:ledger,summary:{}}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ok:false,error:'getDashboardData: '+err.message,bookings:[],ledger:[],summary:{}}))
+      .setMimeType(ContentService.MimeType.JSON);
   }
-  var sheetL=ss.getSheetByName('Bank_Ledger');
-  var dataL=sheetL.getDataRange().getValues();
-  var ledger=[],seen={};
-  for (var i=1;i<dataL.length;i++){
-    var row=dataL[i], bid=String(row[2]||'').trim();
-    if (!bid||seen[bid]) continue; seen[bid]=true;
-    ledger.push({date:String(row[0]||''),ota:String(row[1]||''),bookingId:bid,
-      guest:String(row[4]||''),room:String(row[5]||''),
-      checkin:String(row[6]||''),checkout:String(row[7]||''),
-      nights:parseInt(row[8])||0,gross:parseFloat(String(row[9]).replace(/,/g,''))||0,
-      commission:parseFloat(String(row[10]).replace(/,/g,''))||0,
-      net:parseFloat(String(row[11]).replace(/,/g,''))||0,status:String(row[12]||'')});
-  }
-  return ContentService.createTextOutput(JSON.stringify({bookings:bookings,ledger:ledger,summary:{}}))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 function getDashboardDataAsString(){ return getDashboardData().getContent(); }
 
