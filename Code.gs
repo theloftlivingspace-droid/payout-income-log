@@ -1575,6 +1575,46 @@ function rebuildBankLedger() {
     keepRows.push(row); keepFmts.push(srcFmts[i]);
   });
 
+  // ── Collapse multi-guest batch duplicates ──────────────────────
+  // A single SCB payout covering several guests gets written as N
+  // per-guest rows PLUS one combined row (Conf. Code / guest / room
+  // comma-joined) whose NET already equals the sum of the N rows —
+  // matchSCBtoOTA()/manualMatchSCBtoTrip() write the per-guest rows with a
+  // full '✅ Matched - ...' status/note (not '↳'), so the sub-row filter
+  // above doesn't catch them. Left as-is, every batch payout gets counted
+  // twice in Bank_Ledger (once per-guest, once combined) — this is what
+  // was inflating rebuildBankLedger()'s totals. Group by Booking ID and,
+  // when a group has exactly one combined (comma-joined Conf. Code) row,
+  // keep only that row.
+  var byBid={}, bidOrder=[];
+  keepRows.forEach(function(row,i){
+    var bid=(row[C.bid-1]||'').toString().trim();
+    if (!byBid[bid]) { byBid[bid]=[]; bidOrder.push(bid); }
+    byBid[bid].push(i);
+  });
+  var dropIdx={};
+  bidOrder.forEach(function(bid){
+    var idxs=byBid[bid];
+    if (idxs.length<2) return;
+    var combinedIdxs=idxs.filter(function(i){
+      return (keepRows[i][C.conf-1]||'').toString().indexOf(',')>=0;
+    });
+    if (combinedIdxs.length===1) {
+      idxs.forEach(function(i){ if (i!==combinedIdxs[0]) dropIdx[i]=true; });
+    }
+    // if there's no single unambiguous combined row, keep the whole group —
+    // better to overcount a rare edge case visibly than silently drop money
+  });
+  if (Object.keys(dropIdx).length>0) {
+    var filteredRows=[],filteredFmts=[];
+    keepRows.forEach(function(row,i){
+      if (dropIdx[i]) return;
+      filteredRows.push(row); filteredFmts.push(keepFmts[i]);
+    });
+    Logger.log('rebuildBankLedger: collapsed '+Object.keys(dropIdx).length+' duplicate batch sub-rows');
+    keepRows=filteredRows; keepFmts=filteredFmts;
+  }
+
   blSheet.clearContents(); blSheet.clearFormats();
   var hRange=blSheet.getRange(1,1,1,HEADERS.length);
   hRange.setValues([HEADERS]);
