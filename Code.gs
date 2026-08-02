@@ -4012,6 +4012,14 @@ function matchSCBtoOTA(sheet) {
     if (bid) _airbnbSeenBid[bid]=true;
     var raw=row[C.date-1];
     var dt=normalizeDate(raw);
+    // Airbnb's own note already states which deposit this row belongs to
+    // ("...Batch THB 22028.86 | ส่ง..."), which is ground truth for grouping —
+    // far more reliable than summing every row detected on the same calendar
+    // date, since multiple distinct Airbnb deposits (a multi-guest batch AND
+    // one or more same-day Resolution Payouts) can land on the same date.
+    var notesRaw=(row[C.notes-1]||'').toString();
+    var batchM=notesRaw.match(/Batch THB ([\d,]+\.?\d*)/);
+    var batchAmt=batchM?(Math.round(parseFloat(batchM[1].replace(/,/g,''))*100)/100).toFixed(2):null;
     if (!airbnbByDate[dt]) airbnbByDate[dt]=[];
     airbnbByDate[dt].push({
       // Adjustment/Resolution rows (e.g. Photography Adjustment) have no
@@ -4024,7 +4032,8 @@ function matchSCBtoOTA(sheet) {
       guest:(row[C.guest-1]||'').toString(),
       net:net, total:bt,
       netStr:fmtAmt(row[C.net-1]),
-      rowIndex:i+2
+      rowIndex:i+2,
+      batchAmt:batchAmt
     });
   });
 
@@ -4064,6 +4073,46 @@ function matchSCBtoOTA(sheet) {
         };
       }
     });
+  });
+
+  // Explicit-batch grouping: group rows by the "Batch THB X" amount stated in
+  // their own note, rather than only by detected date. Pure date-sum grouping
+  // (above) silently breaks whenever more than one distinct Airbnb deposit
+  // lands on the same calendar date — e.g. a 3-guest batch (22,028.86) plus
+  // one or more same-day Resolution Payouts (726.93, 699.97) — because the
+  // date-sum key ends up being the sum of ALL of them (23,455.76), which
+  // matches none of the individual SCB deposits. Root-caused 2026-08-02:
+  // Gregory Dunlop / Imtiyaz Akhtar / Kseniya Smolenskaya's shared batch
+  // stayed "รอ match" forever even though every underlying amount was
+  // correct, because two unrelated Resolution Payout rows shared its date.
+  // The batch label Airbnb writes into the note is ground truth for which
+  // rows belong together, so trust it directly instead of re-deriving via
+  // date-sum whenever it's present and internally consistent.
+  var explicitBatchGroups={};
+  Object.keys(airbnbByDate).forEach(function(dt) {
+    airbnbByDate[dt].forEach(function(r) {
+      if (!r.batchAmt) return;
+      if (!explicitBatchGroups[r.batchAmt]) explicitBatchGroups[r.batchAmt]={rows:[],date:dt};
+      explicitBatchGroups[r.batchAmt].rows.push(r);
+    });
+  });
+  Object.keys(explicitBatchGroups).forEach(function(amt) {
+    var g=explicitBatchGroups[amt];
+    var sumNet=0; g.rows.forEach(function(r){sumNet+=r.net;});
+    var sumStr=(Math.round(sumNet*100)/100).toFixed(2);
+    // Only trust this grouping when the rows' own net sum actually
+    // reconciles to the stated batch label — if it doesn't (e.g. a row is
+    // missing/not yet detected), fall back to date-sum below rather than
+    // registering a possibly-incomplete key.
+    if (sumStr!==amt) return;
+    var key=amt+'|'+g.date+'|Airbnb';
+    airbnbBatches[key]={
+      guests:g.rows.map(function(r){return r.guest;}),
+      confs: g.rows.map(function(r){return r.conf;}),
+      nets:  g.rows.map(function(r){return r.netStr;}),
+      rowIndices: g.rows.map(function(r){return r.rowIndex;}),
+      date:g.date, total:amt
+    };
   });
 
   // Multi-date batches: รวม 2–7 วันติดกัน (Airbnb บางครั้ง batch หลาย CI date รวมกัน)
