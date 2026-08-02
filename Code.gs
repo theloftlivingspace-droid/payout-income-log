@@ -404,6 +404,7 @@ function fullRebuild() {
               existing.set(bid, Number(r.net)||0);
               appendRow(sheet, r);   // write immediately — nothing lost if we time out
               totalNew++;
+              _maybeNotifyNewAdjustment_(r);
             }
           });
         } catch(e) {
@@ -567,7 +568,7 @@ function dailyEmailSync() {
             if (!bid2) return;
             r.bookingId = bid2;
           }
-          if (!existing.has(bid2)) { newRows.push(r); existing.set(bid2, Number(r.net)||0); }
+          if (!existing.has(bid2)) { newRows.push(r); existing.set(bid2, Number(r.net)||0); _maybeNotifyNewAdjustment_(r); }
         }); } catch(e){ Logger.log('ERR: '+e.message); }
       });
     });
@@ -789,9 +790,18 @@ function parseAirbnbEmail(msg) {
     // conf ใน AIRBNB_EXTENSIONS → ใช้ checkOut เป็น suffix เพื่อแยก payout หลายครั้ง
     var extSuffix = (confCode && AIRBNB_EXTENSIONS[confCode] && checkOut)
       ? '-EXT-'+checkOut.replace(/-/g,'') : '';
+    // Adjustment/Resolution lines with no confCode have nothing natural to
+    // key an ID off. Previously this used 'rows.length' (position in the
+    // current parse), which is NOT stable across re-parses of the same
+    // email (e.g. a later fullRebuild() that re-scans old Gmail threads) —
+    // a re-parse could land at a different array index and generate a
+    // different bookingId, so resolveAirbnbBid()'s existing.has(bid) dedupe
+    // check would never catch it as a duplicate. Keying off date+|net|
+    // instead (content-based, not position-based) makes the same
+    // adjustment always resolve to the same bookingId on every re-parse.
     var bookingId = confCode
       ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
-      : 'ABB-'+dt.replace(/-/g,'')+'-'+rows.length+(isRes?'-RES':'');
+      : 'ABB-ADJ-'+dt.replace(/-/g,'')+'-'+Math.round(Math.abs(parseFloat(net||0))*100)+(isRes?'-RES':'');
 
     // Adjustment lines (e.g. Photography Adjustment) have no Home/listLine to
     // derive a room from at all, so roomFromText would always return '?'.
@@ -844,12 +854,25 @@ function parseAirbnbEmail(msg) {
       // isAdj + ไม่มี confCode = ไม่มีอะไรให้ pipeline ปกติ (guest-name matching ใน
       // loft-booking-invoice-todo) ใช้ผูกกับ booking ได้เลย ต้องแจ้งเตือนแทนที่จะ
       // ปล่อยให้เงียบหายไปจนกว่าจะมีคนบังเอิญไปเจอเอง
-      _notifyAdminUnmatchedAdjustment_({
+      //
+      // Root cause fix 2026-08-02: this used to call
+      // _notifyAdminUnmatchedAdjustment_ directly, right here, unconditionally
+      // on every parse — including re-parses of an email that was already
+      // handled days ago (e.g. a fullRebuild() that rescans SEARCH_FROM).
+      // The 2026-07-23 Photography Adjustment (-2862.44, booking 327170,
+      // room 214) had already been invoiced in Apartmentery and the sheet
+      // row was already ✅ Matched — but a re-parse of the same Airbnb email
+      // still re-fired the exact same "unmatched" alert. Instead of
+      // notifying here, stash the payload on the row and let
+      // fullRebuild()/dailyEmailSync() fire it only if the row actually
+      // turns out to be new (i.e. survives their existing.has(bid) dedupe
+      // check below) — see _maybeNotifyNewAdjustment_.
+      r._adjNotifyPayload = {
         dt: r.date, guest: r.guest, net: r.net,
         room: r.room,
         pickedFromBatch: !!batchRoomCandidate,
         note: r.notes
-      });
+      };
     });
   }
 
@@ -869,6 +892,14 @@ function parseAirbnbEmail(msg) {
 // on an existing booking — see loft-booking-invoice-todo's
 // linkPhotographyAdjustment20260723.gs for that one-off).
 // ═══════════════════════════════════════════════════════════════
+// Call this (instead of _notifyAdminUnmatchedAdjustment_ directly) right
+// after a row has been confirmed genuinely new and appended to the sheet.
+// Only fires if parseAirbnbEmail tagged the row with _adjNotifyPayload
+// (i.e. it was an isAdj row with no confCode).
+function _maybeNotifyNewAdjustment_(r) {
+  if (r && r._adjNotifyPayload) _notifyAdminUnmatchedAdjustment_(r._adjNotifyPayload);
+}
+
 function _notifyAdminUnmatchedAdjustment_(row) {
   try {
     var props = PropertiesService.getScriptProperties();
