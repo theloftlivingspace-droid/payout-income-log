@@ -39,4 +39,8 @@ jobs:
         # deployment (AKfycbz3r-wE...) that nothing calls, so CI/CD silently
         # deployed to a webapp URL no consumer ever hits — every push looked
         # successful but the live /exec endpoint kept running stale code.
-        run: clasp deploy --deploymentId AKfycbyAP9Z_pIlKrXv9AOXwDhY0wNVSSFL0vU8VuH0SssFyxretRyt9CJNjxVZOLN3eFjs --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
+        # 2026-08-03: same failure mode recurred — the AKfycbyAP9Z... deployment
+        # above was archived/deleted directly in the Apps Script UI (outside of
+        # clasp), so `clasp deploy` kept reporting success while /exec 404'd.
+        # Updated to the current active Web App deployment ID below.
+        run: clasp deploy --deploymentId AKfycbxwlKBtlw74Z52ryAK2SNV_3mNXhFzk3IoANSOqNBhfENUdO3QhfQUKovZ6_THXfeE --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
