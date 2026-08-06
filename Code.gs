@@ -4137,78 +4137,66 @@ function matchSCBtoOTA(sheet) {
     }
   }
 
-  var tripNets={}, expediaNets={};
-  // collect individual rows by month+OTA
-  var tripByMonth={}, expedByMonth={};
+  // ── Trip.com / Expedia pools ─────────────────────────────────────────
+  // ROOT CAUSE (found 2026-08-06): batch sums used to be bucketed by the
+  // calendar month of each row's own "วันที่ตรวจพบ" (email-detected date).
+  // Expedia remittances don't respect month boundaries — e.g. Jantongsiri
+  // (detected 2026-06-30) and Antov (detected 2026-07-11) were paid together
+  // in ONE Aug 3 remittance (3,817.54 = 1,887.34 + 1,930.20), but landed in
+  // different month buckets ('2026-06' vs '2026-07') and so never summed
+  // together, leaving the SCB row stuck in "รอ match" forever. Fixed by
+  // dropping calendar-month bucketing in favor of a date-window subset-sum
+  // search anchored on the SCB payment date (see findOTASubsetMatch_ below),
+  // which also naturally covers the old single-row and same-month-batch cases.
+  var tripRows=[], expedRows=[];
   data.forEach(function(row,i) {
     var ota=(row[C.ota-1]||'').toString().trim();
+    if (ota!=='Trip.com' && ota!=='Expedia') return;
+    var status=(row[C.status-1]||'').toString().trim();
+    if (status.indexOf('โอนแล้ว')===0) return; // already settled — never re-pool
     var net=parseFloat((row[C.net-1]||0).toString().replace(/,/g,''))||0;
     if (!net) return;
     var raw=row[C.date-1];
     var dt=normalizeDate(raw);
-    var mon=dt.substring(0,7);
     var entry={
       guest:(row[C.guest-1]||'').toString(),
       bid:  (row[C.bid-1]||'').toString(),
       net:  net, netStr:fmtAmt(row[C.net-1]),
-      rowIndex:i+2
+      rowIndex:i+2, dateStr:dt
     };
-    if (ota==='Trip.com') {
-      // individual net key (same as before)
-      var nk=fmtAmt(row[C.net-1])+'|'+mon+'|Trip.com';
-      if (!tripNets[nk]) tripNets[nk]={guests:[],bids:[],nets:[],rowIndices:[],total:fmtAmt(row[C.net-1]),ota:'Trip.com'};
-      tripNets[nk].guests.push(entry.guest);
-      tripNets[nk].bids.push(entry.bid);
-      tripNets[nk].nets.push(entry.netStr);
-      tripNets[nk].rowIndices.push(entry.rowIndex);
-      // accumulate for batch sum
-      if (!tripByMonth[mon]) tripByMonth[mon]=[];
-      tripByMonth[mon].push(entry);
-    } else if (ota==='Expedia') {
-      var ek=fmtAmt(row[C.net-1])+'|'+mon+'|Expedia';
-      if (!expediaNets[ek]) expediaNets[ek]={guests:[],bids:[],nets:[],rowIndices:[],total:fmtAmt(row[C.net-1]),ota:'Expedia'};
-      expediaNets[ek].guests.push(entry.guest);
-      expediaNets[ek].bids.push(entry.bid);
-      expediaNets[ek].nets.push(entry.netStr);
-      expediaNets[ek].rowIndices.push(entry.rowIndex);
-      if (!expedByMonth[mon]) expedByMonth[mon]=[];
-      expedByMonth[mon].push(entry);
-    }
+    if (ota==='Trip.com') tripRows.push(entry); else expedRows.push(entry);
   });
 
-  // Trip.com batch sums: รวมทุก booking ในเดือนเดียวกัน (Trip.com บางครั้งโอนรวม)
-  Object.keys(tripByMonth).forEach(function(mon) {
-    var rows=tripByMonth[mon];
-    if (rows.length<2) return;
-    var sumNet=0; rows.forEach(function(r){sumNet+=r.net;});
-    var sumStr=(Math.round(sumNet*100)/100).toFixed(2);
-    var bk=sumStr+'|'+mon+'|Trip.com';
-    if (!tripNets[bk]) {
-      tripNets[bk]={
-        guests:rows.map(function(r){return r.guest;}),
-        bids:  rows.map(function(r){return r.bid;}),
-        nets:  rows.map(function(r){return r.netStr;}),
-        rowIndices: rows.map(function(r){return r.rowIndex;}),
-        total: sumStr, ota:'Trip.com'
-      };
-    }
-  });
-  Object.keys(expedByMonth).forEach(function(mon) {
-    var rows=expedByMonth[mon];
-    if (rows.length<2) return;
-    var sumNet=0; rows.forEach(function(r){sumNet+=r.net;});
-    var sumStr=(Math.round(sumNet*100)/100).toFixed(2);
-    var bk=sumStr+'|'+mon+'|Expedia';
-    if (!expediaNets[bk]) {
-      expediaNets[bk]={
-        guests:rows.map(function(r){return r.guest;}),
-        bids:  rows.map(function(r){return r.bid;}),
-        nets:  rows.map(function(r){return r.netStr;}),
-        rowIndices: rows.map(function(r){return r.rowIndex;}),
-        total: sumStr, ota:'Expedia'
-      };
-    }
-  });
+  // Subset-sum search: find a combination of not-yet-matched rows (within a
+  // date window around the SCB payment date) whose nets sum exactly to the
+  // SCB amount. Covers single-row matches (subset size 1), same-month batches
+  // and cross-month batches alike — replaces the old fixed month-key lookups.
+  function findOTASubsetMatch_(rows, targetAmt, scbDateStr, daysBefore, daysAfter) {
+    var scbTs=new Date(scbDateStr).getTime();
+    var pool=rows.filter(function(r) {
+      var diffDays=(scbTs-new Date(r.dateStr).getTime())/86400000;
+      return diffDays>=-daysAfter && diffDays<=daysBefore;
+    });
+    if (!pool.length || pool.length>24) return null; // guard against runaway search
+    var targetCents=Math.round(targetAmt*100);
+    var order=pool.map(function(r,idx){return idx;})
+                  .sort(function(a,b){return pool[b].net-pool[a].net;}); // desc for pruning
+    var chosen=[], result=null;
+    (function dfs(pos, remainingCents) {
+      if (result) return;
+      if (remainingCents===0 && chosen.length>0) { result=chosen.slice(); return; }
+      if (pos>=order.length || remainingCents<0) return;
+      var idx=order[pos];
+      var cents=Math.round(pool[idx].net*100);
+      chosen.push(idx);
+      dfs(pos+1, remainingCents-cents);
+      chosen.pop();
+      if (result) return;
+      dfs(pos+1, remainingCents);
+    })(0, targetCents);
+    if (!result) return null;
+    return result.map(function(idx){ return pool[idx]; });
+  }
 
   // Pre-build set of SCB bids already matched (any row with ✅ or ↳ in notes)
   var matchedScbBids={};
@@ -4263,33 +4251,38 @@ function matchSCBtoOTA(sheet) {
       delete airbnbBatches[matchKey]; return;
     }
 
-    var scbMon=scbDate.substring(0,7);
-    var tripKeys=[scbAmt+'|'+scbMon+'|Trip.com',
-                  scbAmt+'|'+prevMonth(scbMon)+'|Trip.com',
-                  scbAmt+'|'+nextMonth(scbMon)+'|Trip.com'];
-    for (var ti=0;ti<tripKeys.length;ti++) {
-      var b=tripNets[tripKeys[ti]];
-      if (!b||!b.guests.length) continue;
+    // Trip.com: rows are usually detected close to the payout, but can still
+    // straddle a month boundary — search a window rather than fixed months.
+    var tripMatch=findOTASubsetMatch_(tripRows, parseAmt(scbAmt), scbDate, 60, 3);
+    if (tripMatch) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
-          b.bids,b.guests,b.nets,{},detailByBid,'Trip.com settlement')});
+          tripMatch.map(function(r){return r.bid;}),
+          tripMatch.map(function(r){return r.guest;}),
+          tripMatch.map(function(r){return r.netStr;}),
+          {},detailByBid,'Trip.com settlement')});
       var noteT=noteFor('Trip.com settlement');
-      if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:noteT}); });
-      delete tripNets[tripKeys[ti]]; return;
+      tripMatch.forEach(function(r){ originalRowsToUpdate.push({row:r.rowIndex, note:noteT}); });
+      var usedT={}; tripMatch.forEach(function(r){usedT[r.rowIndex]=true;});
+      tripRows=tripRows.filter(function(r){return !usedT[r.rowIndex];});
+      return;
     }
 
-    var expKeys=[scbAmt+'|'+scbMon+'|Expedia',
-                 scbAmt+'|'+prevMonth(scbMon)+'|Expedia',
-                 scbAmt+'|'+nextMonth(scbMon)+'|Expedia'];
-    for (var ei=0;ei<expKeys.length;ei++) {
-      var b=expediaNets[expKeys[ei]];
-      if (!b||!b.guests.length) continue;
+    // Expedia: remittances bundle whichever reservations Expedia happens to
+    // settle together, regardless of calendar month — same window search.
+    var expMatch=findOTASubsetMatch_(expedRows, parseAmt(scbAmt), scbDate, 60, 3);
+    if (expMatch) {
       replacements.push({deleteRow:i+2,
         insertRows:buildSCBRows(scbOTA,scbDate,scbBid,scbAmt,scbAcct,
-          b.bids,b.guests,b.nets,{},detailByBid,'Expedia remittance')});
+          expMatch.map(function(r){return r.bid;}),
+          expMatch.map(function(r){return r.guest;}),
+          expMatch.map(function(r){return r.netStr;}),
+          {},detailByBid,'Expedia remittance')});
       var noteE=noteFor('Expedia remittance');
-      if (b.rowIndices) b.rowIndices.forEach(function(r){ originalRowsToUpdate.push({row:r, note:noteE}); });
-      delete expediaNets[expKeys[ei]]; return;
+      expMatch.forEach(function(r){ originalRowsToUpdate.push({row:r.rowIndex, note:noteE}); });
+      var usedE={}; expMatch.forEach(function(r){usedE[r.rowIndex]=true;});
+      expedRows=expedRows.filter(function(r){return !usedE[r.rowIndex];});
+      return;
     }
   });
 
