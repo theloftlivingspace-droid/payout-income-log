@@ -2712,6 +2712,13 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ matchRoomFromSheet1() เสร็จแล้ว — อัปเดต ' + n + ' แถว</body>'
     );
   }
+  if (p.action==='styleSheet1') {
+    styleSheet1();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ styleSheet1() เสร็จแล้ว — Sheet1 restyle สำเร็จ</body>'
+    );
+  }
   if (p.action==='fixNihel0704') {
     var msg = fixNihel0704Payout();
     return HtmlService.createHtmlOutput(
