@@ -3635,6 +3635,27 @@ function fixBookingComChannel() {
 // OVERRIDE: styleSheet1 — fix room color match (number→type) + รอยืนยัน
 // ═══════════════════════════════════════════════════════════════
 function styleSheet1(){
+  // styleSheet1() is called from 8 different entry points (onEdit, hourly
+  // cron via syncAirbnb363Reservations, doPost webhook from hotel-line-bot,
+  // doGet, setNote, fixBookingDatesFromEmail, restoreFromGitHub,
+  // fixBookingComChannel). Only onEdit used to hold a lock, so two of these
+  // could run concurrently on the same sheet — one mid-sort/delete while
+  // another read a stale snapshot to color — producing the intermittent
+  // "wrong row got flagged pink/italic" bug. Locking here centralizes it so
+  // every caller is protected, no matter which path triggered it.
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    Logger.log('styleSheet1: ชีตล็อกอยู่ (อีก instance กำลังรัน) — ข้าม');
+    return;
+  }
+  try {
+    styleSheet1_impl_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function styleSheet1_impl_(){
   var ss=SpreadsheetApp.openById(MASTER_SHEET_ID);
   var sh=ss.getSheetByName('Sheet1');
   if (!sh){ Logger.log('ไม่พบ Sheet1'); return; }
@@ -5289,16 +5310,9 @@ function onEditStyleSheet1(e) {
     if (sh.getName() !== 'Sheet1') return;
     if (e.range.getRow() === 1) return; // แก้แค่ header ไม่ต้อง restyle
 
-    var lock = LockService.getScriptLock();
-    if (!lock.tryLock(5000)) {
-      Logger.log('onEditStyleSheet1: ชีตล็อกอยู่ (edit อื่นกำลังรัน) — ข้าม');
-      return;
-    }
-    try {
-      styleSheet1();
-    } finally {
-      lock.releaseLock();
-    }
+    // Locking now lives inside styleSheet1() itself (covers every entry
+    // point, not just onEdit) — call directly, no lock here.
+    styleSheet1();
   } catch (err) {
     Logger.log('onEditStyleSheet1 ERROR: ' + err.message);
   }
