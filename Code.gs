@@ -2661,8 +2661,12 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || '';
     if (action === 'styleSheet1') {
-      styleSheet1();
-      return ContentService.createTextOutput(JSON.stringify({ ok: true, action: 'styleSheet1' }))
+      var ran = styleSheet1();
+      // ran === false means the lock was busy and nothing actually happened.
+      // Report that as a non-ok JSON body (still HTTP 200, since GAS doPost
+      // doesn't give easy control over status code) so triggerStyleSheet1_()'s
+      // caller can check body.ok and retry instead of treating this as done.
+      return ContentService.createTextOutput(JSON.stringify({ ok: ran !== false, action: 'styleSheet1', skipped: ran === false }))
         .setMimeType(ContentService.MimeType.JSON);
     }
     if (action === 'debugLHEmail') {
@@ -3646,10 +3650,19 @@ function styleSheet1(){
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     Logger.log('styleSheet1: ชีตล็อกอยู่ (อีก instance กำลังรัน) — ข้าม');
-    return;
+    // Return false, not just log-and-return: callers (doPost/doGet) use this
+    // to decide whether to report success. A caller that reports ok:true
+    // when nothing actually ran defeats triggerStyleSheet1_()'s retry logic
+    // in loft-booking-invoice-todo — the row stays stuck with stale styling
+    // (missing-ID pink/italic) because the retrier thinks it already worked.
+    // Bug found 2026-08-19: row 184 (214 Legacy / Acif Elahi, bookingId
+    // 330645) stayed italic despite triggerStyleSheet1_'s 3 retries because
+    // every attempt happened to land a 200 even when skipped.
+    return false;
   }
   try {
     styleSheet1_impl_();
+    return true;
   } finally {
     lock.releaseLock();
   }
