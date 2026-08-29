@@ -614,6 +614,34 @@ function createDailyTrigger() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SAFETY NET — styleSheet1() every 15 min, independent of any write path
+// ═══════════════════════════════════════════════════════════════
+// Every existing caller (email-sync.js, bot.js, loft-booking-invoice-todo's
+// triggerStyleSheet1_) is fire-and-forget with retries, but if all retries
+// fail (GAS cold start, transient network blip, quota) the row that was
+// just written sits unstyled — no zebra stripe, no room color, no channel
+// color — until the *next* unrelated edit happens to touch Sheet1 and fire
+// onEditStyleSheet1. dailyEmailSync() runs hourly but never calls
+// styleSheet1() itself (only stylePayoutLog(), a different sheet), so there
+// was no independent recovery path. This trigger closes that gap: even if
+// every caller-side retry fails, the sheet self-heals within ~15 min.
+// styleSheet1() already holds its own ScriptLock, so overlapping with an
+// onEdit-triggered run is safe — one just waits/skips.
+function styleSheet1SafetyNet() {
+  styleSheet1();
+}
+
+function createStyleSheet1SafetyNetTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(t){ return t.getHandlerFunction()==='styleSheet1SafetyNet'; })
+    .forEach(function(t){ ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('styleSheet1SafetyNet')
+    .timeBased().everyMinutes(15)
+    .create();
+  Logger.log('Trigger: styleSheet1SafetyNet ทุก 15 นาที ติดตั้งเรียบร้อย');
+}
+
+// ═══════════════════════════════════════════════════════════════
 // FETCH
 // ═══════════════════════════════════════════════════════════════
 function fetchAirbnbPayouts() {
