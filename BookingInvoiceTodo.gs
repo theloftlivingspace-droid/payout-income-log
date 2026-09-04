@@ -27,11 +27,32 @@ function handleRequest(p) {
 
 // ── buildData ──────────────────────────────────────────────────────────
 function buildData() {
+  // This used to open+read the BookingTodo status sheet FOUR separate times
+  // per request (getDoneMap/getFirstSeenMap × booking/invoice, each doing
+  // its own SpreadsheetApp.openById), plus a synchronous appendRow() per
+  // newly-seen booking/invoice row inline during the scan. Combined with
+  // zero caching, that's what made the Booking/Invoice tab slow to open —
+  // every visit re-paid all of that from scratch. Now: one cache check, one
+  // combined read of BookingTodo, and new rows are batched into a single
+  // write at the end.
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'bookingTodoData_v1';
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
   var ss     = SpreadsheetApp.openById(SS_ID);
   var today  = fmtDate(new Date());
 
-  var bookings = readBookings(ss, today);
-  var invoices = readInvoices(ss, today);
+  var todoSheet = getTodoSheet(ss);
+  var todoMaps  = buildTodoMaps_(todoSheet);
+  var pendingFirstSeen = []; // batched instead of one appendRow per new item
+
+  var bookings = readBookings(ss, today, todoMaps, pendingFirstSeen);
+  var invoices = readInvoices(ss, today, todoMaps, pendingFirstSeen);
+
+  if (pendingFirstSeen.length) {
+    todoSheet.getRange(todoSheet.getLastRow() + 1, 1, pendingFirstSeen.length, 4).setValues(pendingFirstSeen);
+  }
 
   // ── build matchKey cross-sets ─────────────────────────────────────
   // สร้าง name-prefix index จาก invoice เพื่อ fuzzy match ชื่อสั้น
@@ -46,15 +67,40 @@ function buildData() {
     inv.matchKeys = buildInvoiceMatchKeys(inv, bkNamePrefixes);
   });
 
-  return { today: today, booking: bookings, invoice: invoices };
+  var result = { today: today, booking: bookings, invoice: invoices };
+  try {
+    // 25s TTL — long enough to absorb repeat tab-switches, short enough
+    // that a checkbox toggle or note edit (which invalidate it explicitly
+    // anyway) never has to wait it out.
+    cache.put(cacheKey, JSON.stringify(result), 25);
+  } catch (e) {
+    // Payload too large for CacheService (100KB/key) — just skip caching.
+  }
+  return result;
+}
+
+// Single combined read of BookingTodo → {doneMap:{booking,invoice}, firstSeenMap:{booking,invoice}}
+// Replaces 4 separate getDoneMap()/getFirstSeenMap() opens+reads with 1.
+function buildTodoMaps_(todoSheet) {
+  var rows = todoSheet.getDataRange().getValues();
+  var doneMap = { booking: {}, invoice: {} };
+  var firstSeenMap = { booking: {}, invoice: {} };
+  for (var i = 1; i < rows.length; i++) {
+    var type = String(rows[i][0]);
+    if (type !== 'booking' && type !== 'invoice') continue;
+    var id = String(rows[i][1]);
+    doneMap[type][id] = rows[i][2] === true || rows[i][2] === 'TRUE';
+    if (rows[i][3]) firstSeenMap[type][id] = String(rows[i][3]).substring(0, 10);
+  }
+  return { doneMap: doneMap, firstSeenMap: firstSeenMap };
 }
 
 // ── readBookings (Sheet1) ──────────────────────────────────────────────
-function readBookings(ss, today) {
+function readBookings(ss, today, todoMaps, pendingFirstSeen) {
   var sheet = ss.getSheetByName(SHEET1_TAB);
   var rows  = sheet.getDataRange().getValues();
-  var doneMap = getDoneMap('booking');
-  var firstSeenMap = getFirstSeenMap('booking');
+  var doneMap = todoMaps.doneMap.booking;
+  var firstSeenMap = todoMaps.firstSeenMap.booking;
 
   var result = [], mode = 'start';
   for (var i = 0; i < rows.length; i++) {
@@ -72,7 +118,7 @@ function readBookings(ss, today) {
     var fs = firstSeenMap[resId] || today;
     if (!firstSeenMap[resId]) {
       firstSeenMap[resId] = today;
-      saveFirstSeen('booking', resId, today);
+      pendingFirstSeen.push(['booking', resId, false, today]);
     }
 
     result.push({
@@ -93,11 +139,11 @@ function readBookings(ss, today) {
 }
 
 // ── readInvoices (Bank_Ledger) ─────────────────────────────────────────
-function readInvoices(ss, today) {
+function readInvoices(ss, today, todoMaps, pendingFirstSeen) {
   var sheet  = ss.getSheetByName(LEDGER_TAB);
   var rows   = sheet.getDataRange().getValues();
-  var doneMap      = getDoneMap('invoice');
-  var firstSeenMap = getFirstSeenMap('invoice');
+  var doneMap      = todoMaps.doneMap.invoice;
+  var firstSeenMap = todoMaps.firstSeenMap.invoice;
 
   // PASS 1: for SCB batch transactions, the same bid can appear on
   // several rows — one merged "total" row (comma-separated rooms/
@@ -148,7 +194,7 @@ function readInvoices(ss, today) {
     var fs = firstSeenMap[bid] || detectedRaw;
     if (!firstSeenMap[bid]) {
       firstSeenMap[bid] = detectedRaw;
-      saveFirstSeen('invoice', bid, detectedRaw);
+      pendingFirstSeen.push(['invoice', bid, false, detectedRaw]);
     }
 
     var rooms   = String(r[5] || '').trim();
@@ -250,7 +296,7 @@ function readInvoices(ss, today) {
 
       seen[sBid] = true;
       var fs2 = firstSeenMap[sBid] || normDate(sr[0]);
-      if (!firstSeenMap[sBid]) { firstSeenMap[sBid] = fs2; saveFirstSeen('invoice', sBid, fs2); }
+      if (!firstSeenMap[sBid]) { firstSeenMap[sBid] = fs2; pendingFirstSeen.push(['invoice', sBid, false, fs2]); }
 
       result.push({
         invoiceKey      : sBid,
@@ -437,6 +483,13 @@ function fmtDate(d) {
 }
 
 // ── setNote: write note to Sheet1 col G for a given resId ─────────────
+// Call after any write that changes what buildData() returns (done-toggle,
+// note edit) so the Booking/Invoice tab sees it on its very next load
+// instead of waiting out the cache TTL.
+function invalidateBookingTodoCache_() {
+  try { CacheService.getScriptCache().remove('bookingTodoData_v1'); } catch (e) { /* best-effort */ }
+}
+
 function setNote(resId, note) {
   if (!resId) return { ok: false, error: 'no resId' };
   var ss    = SpreadsheetApp.openById(SS_ID);
@@ -450,6 +503,7 @@ function setNote(resId, note) {
     if (String(rows[i][5] || '').trim() === resId) {
       sheet.getRange(i + 1, 7).setValue(note);   // col G = index 6 = column 7
       styleSheet1();
+      invalidateBookingTodoCache_();
       return { ok: true };
     }
   }
@@ -514,11 +568,13 @@ function setDone(type, id, done) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === type && String(rows[i][1]) === id) {
       s.getRange(i + 1, 3).setValue(done);
+      invalidateBookingTodoCache_();
       return { ok: true };
     }
   }
   // ไม่เจอ row → สร้างใหม่
   s.appendRow([type, id, done, fmtDate(new Date())]);
+  invalidateBookingTodoCache_();
   return { ok: true, created: true };
 }
 
