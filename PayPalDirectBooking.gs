@@ -57,13 +57,13 @@ function parsePayPalEmail(msg) {
   }
   if (!body || body.trim().length < 10) return null;
 
+  // Skip PayPal's own outbound-transfer notices (PayPal→bank withdrawal,
+  // e.g. subject "เรากำลังโอนเงินไปยังธนาคารของคุณ" — confirmed live subject,
+  // 2026-09-09) — those land as ordinary incoming SCB deposits parsed by
+  // parseSCBEmail() already; we only want the guest→PayPal leg here.
+  if (/sent to your bank|withdrawal|โอนเงินไปที่|โอนเงินไปยังธนาคาร|กำลังโอนเงิน|payout was sent/i.test(subj)) return null;
   var isReceived = /you'?ve received|you'?ve got money|payment received|payment from|ได้รับการชำระเงิน|ได้รับเงิน|การชำระเงินจาก/i.test(body + ' ' + subj);
   if (!isReceived) return null;
-  // Skip PayPal's own outbound-transfer notices (PayPal→bank withdrawal) —
-  // those are parsed as ordinary incoming SCB deposits by parseSCBEmail()
-  // already; we only want the guest→PayPal leg here.
-  if (/sent to your bank|withdrawal|โอนเงินไปที่|payout was sent/i.test(subj)) return null;
-
   var amount = gRe(body, /(?:received|payment of|ได้รับ)[^0-9]{0,40}(?:THB|บาท|[฿\u0e3f])\s*([\d,]+\.\d{2})/i);
   if (!amount) amount = gRe(body, /[฿\u0e3f]\s*([\d,]+\.\d{2})\s*THB/i);
   if (!amount) return null;

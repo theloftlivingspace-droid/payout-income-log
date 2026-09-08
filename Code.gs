@@ -2785,6 +2785,16 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ restoreFromGitHub(): ' + (msg3 || 'done') + '</body>'
     );
   }
+  if (p.action==='recordPayPal') {
+    var n4 = recordKnownPayPalPayments_20260909();
+    var ss4 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet4 = ss4.getSheetByName(TAB_NAME);
+    matchSCBtoPayPal(sheet4);
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ recordKnownPayPalPayments_20260909(): เพิ่ม ' + n4 + ' แถว | matchSCBtoPayPal() รันแล้ว (จะ match จริงก็ต่อเมื่อ SCB deposit email ฿6,353.40 เข้ามาแล้ว)</body>'
+    );
+  }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
   if (p.action) {
     var out = handleRequest(p);
