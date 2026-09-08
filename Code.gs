@@ -44,7 +44,8 @@ var C = {
 };
 const OTA_BG = {
   'Airbnb':'#fff0f0','Booking.com':'#f0f8ff',
-  'Expedia':'#fffbe6','Trip.com':'#f0fff4','SCB':'#fdf5ff'
+  'Expedia':'#fffbe6','Trip.com':'#f0fff4','SCB':'#fdf5ff',
+  'PayPal':'#eef4ff'
 };
 const RES_BG       = '#ffe8e8';
 const SCB_TOTAL_BG = '#e8f5e9';
@@ -235,6 +236,7 @@ function quickReformat() {
   var sheet = ss.getSheetByName(TAB_NAME);
   if (!sheet) { Logger.log('quickReformat: ไม่พบ sheet'); return; }
   matchSCBtoOTA(sheet);
+  matchSCBtoPayPal(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
   resolveManualExtranetHints(sheet);
@@ -367,7 +369,8 @@ function fullRebuild() {
   var sources = [
     { key:'airbnb', q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:parseAirbnbEmail, lim:100 },
     { key:'lh',     q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
-    { key:'scb',    q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 }
+    { key:'scb',    q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 },
+    { key:'paypal', q:paypalSearchQ_(SEARCH_FROM),                                             fn:parsePayPalEmailRows, lim:100 }
   ];
   sources.forEach(function(s) {
     if (timedOut || doneSources.indexOf(s.key) !== -1) return;
@@ -498,6 +501,7 @@ function fullRebuild() {
 
   // ── match + format ────────────────────────────────────────────
   matchSCBtoOTA(sheet);
+  matchSCBtoPayPal(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports();
   resolveManualExtranetHints(sheet);
@@ -555,7 +559,8 @@ function dailyEmailSync() {
     {q:'from:automated@airbnb.com subject:"sent a payout" after:'+since, fn:parseAirbnbEmail},
     {q:'from:no-reply@app.littlehotelier.com after:'+since,              fn:parseLHEmail},
     {q:'from:noreply_htl@trip.com after:'+since,                         fn:parseTripEmail},
-    {q:'from:No_reply_scbbusinessalert@scb.co.th after:'+since,          fn:parseSCBEmail}
+    {q:'from:No_reply_scbbusinessalert@scb.co.th after:'+since,          fn:parseSCBEmail},
+    {q:paypalSearchQ_(since),                                             fn:parsePayPalEmailRows}
   ];
   searches.forEach(function(s) {
     GmailApp.search(s.q,0,20).forEach(function(t) {
@@ -584,6 +589,7 @@ function dailyEmailSync() {
   try { syncAirbnb363Reservations(); } catch(e) { Logger.log('ERR syncAirbnb363Reservations: '+e.message); }
 
   matchSCBtoOTA(sheet);
+  matchSCBtoPayPal(sheet);
   matchBookingComSCB();
   syncBookingComFinancialReports(finReportSince);
   resolveManualExtranetHints(sheet);
@@ -1934,11 +1940,11 @@ function sortPayoutByOTA(sheet) {
   var rows=values.map(function(v,i){
     return{v:v,bg:bgs[i],fc:fcs[i],fw:fws[i],fs:fss[i]};
   });
-  var OTA_ORDER={'Airbnb':1,'Booking.com':2,'Expedia':3,'Trip.com':4};
+  var OTA_ORDER={'Airbnb':1,'Booking.com':2,'Expedia':3,'Trip.com':4,'PayPal':5};
   rows.sort(function(a,b){
     var otaA=(a.v[C.ota-1]||'').toString();
     var otaB=(b.v[C.ota-1]||'').toString();
-    function grp(o){ return OTA_ORDER[o]||(o.startsWith('SCB')?5:6); }
+    function grp(o){ return OTA_ORDER[o]||(o.startsWith('SCB')?6:7); }
     var gA=grp(otaA),gB=grp(otaB);
     if (gA!==gB) return gA-gB;
     var dA=a.v[C.date-1] instanceof Date?a.v[C.date-1]:new Date(a.v[C.date-1]);

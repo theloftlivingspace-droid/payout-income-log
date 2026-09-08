@@ -18,6 +18,12 @@ Google Apps Script สำหรับ **The Loft Living Space**
 - **Booking.com / Expedia** — email `no-reply@app.littlehotelier.com` (Little Hotelier)
 - **Trip.com** — email `noreply_htl@trip.com`
 - **SCB** — email `No_reply_scbbusinessalert@scb.co.th`
+- **PayPal** (direct bookings) — email `service@paypal.com` / `paypal@e.paypal.com` / `member@paypal.com`.
+  Auto-withdraws to SCB once balance ≥ ฿5,000, so one SCB deposit can bundle
+  several PayPal payments — matched by date window + fee-ratio sanity check
+  (not exact-cents like Airbnb/Trip/Expedia, since PayPal's per-transaction
+  fee isn't restated in the withdrawal). See `PayPalDirectBooking.gs` header
+  for details and known limitations (parser unvalidated against a live email).
 
 ## Entry Points
 | Function | ใช้เมื่อ |
@@ -50,6 +56,14 @@ parseEmails → appendRow → matchSCBtoOTA → matchRoomFromSheet1
 | Mycondo A/B | 363 |
 
 ## Changelog
+### v21 (2026-09-09)
+- เพิ่ม `PayPalDirectBooking.gs` — PayPal เป็น income source ใหม่ สำหรับ direct booking guest
+- `parsePayPalEmail()` / `parsePayPalEmailRows()` — parse email "payment received" จาก PayPal (ยังไม่ได้ validate กับ email จริง)
+- `matchSCBtoPayPal()` — match SCB deposit → PayPal batch ด้วย date window + fee-ratio (0–10%) แทน exact-cents subset-sum เพราะ PayPal หัก fee ต่อ transaction
+- `recordKnownPayPalPayments_20260909()` — one-off บันทึก Kari Ramsey (฿5,892.00) + Florian Lintner (฿800.00) รอ SCB ฿6,353.40 (คาดถึง 17/9/2026)
+- `fullRebuild()` / `dailyEmailSync()` / `quickReformat()` เรียก `matchSCBtoPayPal()` ต่อจาก `matchSCBtoOTA()`
+- `OTA_ORDER` / `OTA_BG` เพิ่ม 'PayPal'
+
 ### v20 (2026-06)
 - เพิ่ม `MANUAL_ROOM_FIXES[]` — hardcode fix สำหรับ Trip.com/Expedia ที่ match ไม่ได้
 - เพิ่ม `applyManualRoomFixes()` — รัน pass สุดท้ายหลัง `matchRoomFromSheet1()`
