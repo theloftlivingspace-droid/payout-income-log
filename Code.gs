@@ -2819,6 +2819,7 @@ function doGet(e){
     );
   }
   if (p.action==='syncSupa0909') {
+    // (re-pushed 2026-09-09 — force redeploy after function wasn't showing up)
     // One-tap sync for the HM82WNZE55 (Supa, 2026-09-09) Resolution Payout
     // backfill: fixes the room-number mismatch on the two RES rows (parser
     // guessed '?', matchRoomFromSheet1 hadn't run yet), then re-runs SCB
