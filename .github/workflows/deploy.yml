@@ -42,5 +42,13 @@ jobs:
         # 2026-08-03: same failure mode recurred — the AKfycbyAP9Z... deployment
         # above was archived/deleted directly in the Apps Script UI (outside of
         # clasp), so `clasp deploy` kept reporting success while /exec 404'd.
-        # Updated to the current active Web App deployment ID below.
-        run: clasp deploy --deploymentId AKfycbxwlKBtlw74Z52ryAK2SNV_3mNXhFzk3IoANSOqNBhfENUdO3QhfQUKovZ6_THXfeE --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
+        # 2026-09-09: recurred a THIRD time — AKfycbxwlKBt... (set above on
+        # 2026-08-03) was also archived/deleted outside of clasp at some point
+        # after that, so every push since then silently deployed to a dead
+        # /exec endpoint again (confirmed: real doGet code changes landed on
+        # GitHub and clasp push/deploy both reported success, but the live URL
+        # returned Google's generic "unable to open the file" error). Updated
+        # below to the deployment ID Nathan confirmed is currently live —
+        # if this happens a fourth time, check first whether `clasp deployments`
+        # still lists this ID before assuming the code push itself failed.
+        run: clasp deploy --deploymentId AKfycbxATx-qQyGBbDYhL--m7wid6PhNGecvDzAEt_9rVdix_xKZO1N3JePp7wOsbElDu0s --description "Auto-deploy from GitHub Actions ${{ github.sha }}"
