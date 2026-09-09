@@ -2818,6 +2818,39 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ recordKnownPayPalPayments_20260909(): เพิ่ม ' + n4 + ' แถว | matchSCBtoPayPal() รันแล้ว (จะ match จริงก็ต่อเมื่อ SCB deposit email ฿6,353.40 เข้ามาแล้ว)</body>'
     );
   }
+  if (p.action==='fixSupaRoom0909') {
+    // matchRoomFromSheet1() only fills rows where room is still '?' — it
+    // never overwrites a room that's already populated, even if wrong.
+    // Both HM82WNZE55 Resolution Payout rows got room '113' from somewhere
+    // (stale guess, not overwritten since), but the real booking (per
+    // Sheet1 + the main non-RES payout row) is room 203 — confirmed via
+    // Apartmentery showing zero invoices generated for the 2nd leg, because
+    // autoCreateApartmenteryInvoicesAndReceipts (loft-booking-invoice-todo
+    // repo) can't link a room-113 invoiceKey to a room-203 booking. Force-
+    // corrects both rows directly, then re-runs SCB matching + GitHub sync.
+    var ss6 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet6 = ss6.getSheetByName(TAB_NAME);
+    var last6 = sheet6.getLastRow();
+    var fixed6 = [];
+    if (last6 >= 2) {
+      var rng6 = sheet6.getRange(2, 1, last6 - 1, 14).getValues();
+      for (var i6 = 0; i6 < rng6.length; i6++) {
+        var bidVal = String(rng6[i6][C.bid-1]);
+        if (bidVal === 'ABB-HM82WNZE55-RES-20260909' || bidVal === 'ABB-HM82WNZE55-RES-20260909-2') {
+          if (String(rng6[i6][C.room-1]) !== '203') {
+            sheet6.getRange(2 + i6, C.room).setValue('203');
+            fixed6.push(bidVal);
+          }
+        }
+      }
+    }
+    matchSCBtoOTA(sheet6);
+    exportToGitHub();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixSupaRoom0909: แก้ห้องเป็น 203 ให้ ' + fixed6.length + ' แถว (' + fixed6.join(', ') + ') | matchSCBtoOTA() รันแล้ว | exportToGitHub() sync แล้ว<br><br>ต่อไป: เข้า loft-booking-invoice-todo project แล้วรัน autoCreateApartmenteryInvoicesAndReceipts() เพื่อสร้างใบแจ้งหนี้ที่ขาดไป (หรือรอ trigger รายชั่วโมงถัดไป)</body>'
+    );
+  }
   if (p.action==='syncSupa0909') {
     // (re-pushed 2026-09-09 — force redeploy after function wasn't showing up)
     // One-tap sync for the HM82WNZE55 (Supa, 2026-09-09) Resolution Payout
