@@ -738,6 +738,19 @@ function parseAirbnbEmail(msg) {
 
   var rows = [], i = 0;
   var unresolvedAdjRows = []; // isAdj rows with no confCode+no resolved room — see batch-room backfill below
+  // Track how many times each (confCode+dt+isRes) key has been seen so far in
+  // THIS parse. Needed because Airbnb sometimes sends two+ separate Resolution
+  // Payout line items for the same reservation/date in one email (e.g. two
+  // ฿600 legs instead of one ฿1,200 line) — same confCode+dt means they'd
+  // otherwise build the identical bookingId, and resolveAirbnbBid() would then
+  // treat the second occurrence as a true duplicate (same bid + same net) and
+  // silently drop it (root cause: 2026-09-09 Supa Rungrueangsorakarn HM82WNZE55,
+  // two ฿600 Resolution Payout lines collapsed into one row, leaving the SCB
+  // ฿1,200 bank transfer permanently unmatched since only ฿600 existed to
+  // subset-sum against). Keying the suffix off occurrence-within-this-parse is
+  // stable across re-parses (same email → same line order → same counts) while
+  // still distinguishing genuinely separate line items within one email.
+  var resOccurrence = {};
   while (i < lines.length) {
     var ln = lines[i];
     var gam = ln.match(/^(.+?)\s{2,}(-)?[฿\u0e3f]([\d,]+\.\d+)\s*THB$/i);
@@ -833,8 +846,18 @@ function parseAirbnbEmail(msg) {
     // check would never catch it as a duplicate. Keying off date+|net|
     // instead (content-based, not position-based) makes the same
     // adjustment always resolve to the same bookingId on every re-parse.
+    var resSuffix = '';
+    if (isRes && confCode) {
+      var resKey = confCode+'|'+dt;
+      resOccurrence[resKey] = (resOccurrence[resKey]||0)+1;
+      // first occurrence keeps the plain '-RES-<dt>' id (unchanged, so existing
+      // sheet rows from before this fix still dedupe correctly); 2nd+ occurrence
+      // of the same confCode+dt gets a stable '-N' suffix instead of silently
+      // colliding with the first.
+      if (resOccurrence[resKey] > 1) resSuffix = '-'+resOccurrence[resKey];
+    }
     var bookingId = confCode
-      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,''):extSuffix)
+      ? 'ABB-'+confCode+(isRes?'-RES-'+dt.replace(/-/g,'')+resSuffix:extSuffix)
       : 'ABB-ADJ-'+dt.replace(/-/g,'')+'-'+Math.round(Math.abs(parseFloat(net||0))*100)+(isRes?'-RES':'');
 
     // Adjustment lines (e.g. Photography Adjustment) have no Home/listLine to
