@@ -2818,6 +2818,22 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ recordKnownPayPalPayments_20260909(): เพิ่ม ' + n4 + ' แถว | matchSCBtoPayPal() รันแล้ว (จะ match จริงก็ต่อเมื่อ SCB deposit email ฿6,353.40 เข้ามาแล้ว)</body>'
     );
   }
+  if (p.action==='syncSupa0909') {
+    // One-tap sync for the HM82WNZE55 (Supa, 2026-09-09) Resolution Payout
+    // backfill: fixes the room-number mismatch on the two RES rows (parser
+    // guessed '?', matchRoomFromSheet1 hadn't run yet), then re-runs SCB
+    // matching so SCB-2026-09-09-1200.00 picks up the completed pair, then
+    // syncs the result to GitHub. Safe to re-run.
+    var nRoom = matchRoomFromSheet1();
+    var ss5 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet5 = ss5.getSheetByName(TAB_NAME);
+    matchSCBtoOTA(sheet5);
+    exportToGitHub();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ syncSupa0909: matchRoomFromSheet1() อัปเดต ' + nRoom + ' แถว | matchSCBtoOTA() รันแล้ว | exportToGitHub() sync แล้ว</body>'
+    );
+  }
   // Delegate BookingInvoiceTodo actions (getData, setBookingDone, setInvoiceDone, getAllDocs)
   if (p.action) {
     var out = handleRequest(p);
