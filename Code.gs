@@ -5442,3 +5442,50 @@ function fixMoritzResolutionDates() {
   Logger.log('fixMoritzResolutionDates: fixed ' + fixed.length + ' rows: ' + fixed.join(', '));
   return fixed;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// ONE-OFF FIX: 2026-09-09 Supa Rungrueangsorakarn (HM82WNZE55, The
+// Loft Allure) — Airbnb sent two separate ฿600.00 Resolution Payout
+// legs in the same email (batch total ฿1,200.00), but the old
+// bookingId collision bug (fixed in parseAirbnbEmail above) collapsed
+// them into a single ฿600.00 row, leaving SCB's ฿1,200.00 transfer
+// permanently stuck at "รอ match" since only ฿600 existed to
+// subset-sum against. Backfills the missing 2nd leg using the same
+// -2 suffix bookingId the fixed parser would now generate, so a
+// future fullRebuild() re-parse of the same email won't create a
+// second duplicate. Room is left as '?' for matchRoomFromSheet1() to
+// resolve from Sheet1 the same way it resolved the first leg.
+// Run once from the Apps Script editor, then delete/ignore this fn.
+// ═══════════════════════════════════════════════════════════════
+function backfillSupaResolution0909() {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) return 'sheet not found';
+
+  var bid = 'ABB-HM82WNZE55-RES-20260909-2';
+  var last = sheet.getLastRow();
+  if (last >= 2) {
+    var bids = sheet.getRange(2, C.bid, last - 1, 1).getValues().flat().map(String);
+    if (bids.indexOf(bid) >= 0) {
+      Logger.log('backfillSupaResolution0909: already present, skipping');
+      return 'already present';
+    }
+  }
+
+  var newRow = makeRow('Airbnb', '2026-09-09', bid, 'HM82WNZE55',
+    'Supa Rungrueangsorakarn', '?',
+    '2026-09-08', '2026-09-15', 7,
+    '1200.00', '', '600.00',
+    'โอนแล้ว (Resolution Payout)',
+    'Resolution Payout | 2026-09-09 | Batch THB 1200.00 | ส่ง 2026-09-09 | ' +
+    'Manual backfill: 2nd of two ฿600 Resolution Payout legs dropped by the ' +
+    'bookingId-collision bug (see parseAirbnbEmail fix, 2026-09-09)');
+  appendRow(sheet, newRow);
+
+  if (typeof matchRoomFromSheet1 === 'function') matchRoomFromSheet1();
+  if (typeof matchSCBtoOTA === 'function') matchSCBtoOTA(sheet);
+  if (typeof exportToGitHub === 'function') exportToGitHub();
+
+  SpreadsheetApp.getActiveSpreadsheet().toast('Backfilled Supa 2nd Resolution Payout leg', 'Done', 5);
+  return 'ok: backfilled ' + bid;
+}
