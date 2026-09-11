@@ -2821,6 +2821,53 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
     );
   }
+  if (p.action==='splitPayPalRow0911') {
+    // One-off: SCB-2026-09-11-6353.40 was written merged (before the
+    // per-guest split logic above existed). Splits it into two rows —
+    // same fee-allocation math matchSCBtoPayPal() now does automatically.
+    // Safe to re-run: no-ops if the merged row is already gone.
+    var ss8 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet8 = ss8.getSheetByName(TAB_NAME);
+    var last8 = sheet8.getLastRow();
+    var didSplit8 = false;
+    if (last8 >= 2) {
+      var rng8 = sheet8.getRange(2, 1, last8 - 1, HEADERS.length).getValues();
+      for (var i8 = 0; i8 < rng8.length; i8++) {
+        if (String(rng8[i8][C.bid-1]) === 'SCB-2026-09-11-6353.40') {
+          var scbRow8 = 2 + i8;
+          var scbDate8 = '2026-09-11';
+          var guests8 = [
+            { guest:'Kari Ramsey',     room:'210', net:5892.00 },
+            { guest:'Florian Lintner', room:'209', net:800.00  }
+          ];
+          var grossSum8 = 6692.00, feeAmt8 = 338.60, feeRatio8 = feeAmt8/grossSum8;
+          var startRow8 = sheet8.getLastRow() + 1;
+          guests8.forEach(function(r, idx) {
+            var feeShare = feeAmt8 * (r.net / grossSum8);
+            var netShare = r.net - feeShare;
+            sheet8.getRange(startRow8 + idx, 1, 1, HEADERS.length).setValues([[
+              scbDate8, 'SCB (PayPal)', 'SCB-2026-09-11-6353.40:' + idx, '',
+              r.guest, r.room, '', '', '',
+              r.net, feeShare.toFixed(2), netShare.toFixed(2),
+              '✅ Matched - PayPal direct booking',
+              'PayPal → SCB (split ' + (idx+1) + '/2 of SCB-2026-09-11-6353.40) | '
+                + r.guest + ' gross ฿' + r.net.toFixed(2) + ' - fee ~฿' + feeShare.toFixed(2)
+                + ' (' + (feeRatio8*100).toFixed(1) + '% of batch fee, allocated proportionally'
+                + ' — verify against PayPal per-txn fee manually) = net ฿' + netShare.toFixed(2)
+                + ' | Value Date: ' + scbDate8
+            ]]);
+          });
+          sheet8.deleteRow(scbRow8);
+          didSplit8 = true;
+          break;
+        }
+      }
+    }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ splitPayPalRow0911: ' + (didSplit8 ? 'แยกเป็น 2 แถวแล้ว (Kari Ramsey, Florian Lintner)' : 'ไม่พบแถวรวม (อาจแยกไปแล้ว)') + '</body>'
+    );
+  }
   if (p.action==='fixPayPalRoom0911') {
     // One-off: matchSCBtoPayPal() didn't capture room at match time (fixed
     // going forward in PayPalDirectBooking.gs), so SCB-2026-09-11-6353.40

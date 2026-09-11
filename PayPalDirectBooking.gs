@@ -161,25 +161,55 @@ function matchSCBtoPayPal(sheet) {
       + ' (' + (best.feeRatio*100).toFixed(1) + '%) — verify against PayPal fee manually'
       + ' | net ฿' + scbAmt.toFixed(2) + ' | Value Date: ' + scbDate;
 
-    ops.push({ scbRow:i+2, ppRows:best.subset, note:note });
+    ops.push({ scbRow:i+2, ppRows:best.subset, note:note, scbDate:scbDate,
+               grossSum:best.grossSum, feeAmt:parseFloat(feeAmt), feeRatio:best.feeRatio });
     best.subset.forEach(function(r){ usedRowIndices[r.rowIndex] = true; });
   });
 
   // Apply top-down by row number so earlier edits don't shift later row indices.
   ops.sort(function(a,b){ return b.scbRow - a.scbRow; });
   ops.forEach(function(op) {
-    sheet.getRange(op.scbRow, C.ota).setValue('SCB (PayPal)');
-    sheet.getRange(op.scbRow, C.status).setValue('✅ Matched - PayPal direct booking');
-    sheet.getRange(op.scbRow, C.guest).setValue(op.ppRows.map(function(r){return r.guest;}).join(', '));
-    // Rooms are captured per PayPal entry at match time (each direct-booking
-    // row already has its room resolved via matchRoomFromSheet1, which runs
-    // before matchSCBtoPayPal in the pipeline). Multiple guests bundled into
-    // one SCB deposit means multiple rooms — join them rather than leaving
-    // '?' (the SCB deposit itself never carries a room, unlike Airbnb/Trip
-    // payouts which get one from matchSCBtoOTA's conf-code lookup).
-    var rooms = op.ppRows.map(function(r){ return r.room; }).filter(function(r){ return r && r !== '?'; });
-    if (rooms.length) sheet.getRange(op.scbRow, C.room).setValue(rooms.join(', '));
-    sheet.getRange(op.scbRow, C.notes).setValue(op.note);
+    var bidBase = sheet.getRange(op.scbRow, C.bid).getValue();
+
+    if (op.ppRows.length === 1) {
+      // Single guest — overwrite in place, same as before.
+      var r0 = op.ppRows[0];
+      sheet.getRange(op.scbRow, C.ota).setValue('SCB (PayPal)');
+      sheet.getRange(op.scbRow, C.status).setValue('✅ Matched - PayPal direct booking');
+      sheet.getRange(op.scbRow, C.guest).setValue(r0.guest);
+      if (r0.room && r0.room !== '?') sheet.getRange(op.scbRow, C.room).setValue(r0.room);
+      sheet.getRange(op.scbRow, C.notes).setValue(op.note);
+    } else {
+      // Multiple guests bundled into one SCB deposit — per Nathan, split into
+      // one row per guest instead of merging (2026-09-11). Fee is allocated
+      // proportionally by each guest's share of the gross batch total; flagged
+      // in the note as an estimate since PayPal's actual per-txn fee isn't
+      // available here (see file header limitation #2). Appends new rows at
+      // the bottom (same pattern as recordKnownPayPalPayments_20260909) then
+      // deletes the original merged row — safe because ops are processed
+      // top-down, so any still-pending op has a smaller row number and is
+      // unaffected by this deletion.
+      var startRow = sheet.getLastRow() + 1;
+      op.ppRows.forEach(function(r, idx) {
+        var feeShare = op.grossSum > 0 ? (op.feeAmt * (r.net / op.grossSum)) : 0;
+        var netShare = r.net - feeShare;
+        var rowVals = [
+          op.scbDate, 'SCB (PayPal)', bidBase + ':' + idx, '',
+          r.guest, (r.room && r.room !== '?') ? r.room : '?',
+          '', '', '',
+          r.net, feeShare.toFixed(2), netShare.toFixed(2),
+          '✅ Matched - PayPal direct booking',
+          'PayPal → SCB (split ' + (idx+1) + '/' + op.ppRows.length + ' of ' + bidBase + ') | '
+            + r.guest + ' gross ฿' + r.net.toFixed(2) + ' - fee ~฿' + feeShare.toFixed(2)
+            + ' (' + (op.feeRatio*100).toFixed(1) + '% of batch fee, allocated proportionally'
+            + ' — verify against PayPal per-txn fee manually) = net ฿' + netShare.toFixed(2)
+            + ' | Value Date: ' + op.scbDate
+        ];
+        sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setValues([rowVals]);
+      });
+      sheet.deleteRow(op.scbRow);
+    }
+
     op.ppRows.forEach(function(r) {
       sheet.getRange(r.rowIndex, C.status).setValue('โอนแล้ว (PayPal→SCB)');
       var nc = sheet.getRange(r.rowIndex, C.notes);
