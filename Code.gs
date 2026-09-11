@@ -2821,6 +2821,67 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
     );
   }
+  if (p.action==='fixPayPalFormat0911') {
+    // One-off: corrects the earlier attempt (SCB-2026-09-11-6353.40:0/:1)
+    // which used the wrong pattern (per-guest Booking ID suffix, gross/fee
+    // in every row). Replaces with the standard multi-guest pattern used
+    // elsewhere in this sheet: 2 sub-detail '↳' rows + 1 summary row, all
+    // sharing the original Booking ID. Safe to re-run: no-ops if the :0/:1
+    // rows are already gone.
+    var ss9 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet9 = ss9.getSheetByName(TAB_NAME);
+    var last9 = sheet9.getLastRow();
+    var found9 = { row0:-1, row1:-1 };
+    if (last9 >= 2) {
+      var rng9 = sheet9.getRange(2, 1, last9 - 1, HEADERS.length).getValues();
+      for (var i9 = 0; i9 < rng9.length; i9++) {
+        var bid9 = String(rng9[i9][C.bid-1]);
+        if (bid9 === 'SCB-2026-09-11-6353.40:0') found9.row0 = 2 + i9;
+        if (bid9 === 'SCB-2026-09-11-6353.40:1') found9.row1 = 2 + i9;
+      }
+    }
+    var fixed9 = false;
+    if (found9.row0 > 0 && found9.row1 > 0) {
+      var baseBid9 = 'SCB-2026-09-11-6353.40';
+      var scbDate9 = '2026-09-11';
+      var guests9 = [
+        { guest:'Kari Ramsey',     room:'210', bid:'PP-20260902-KariRamsey',     net:5892.00 },
+        { guest:'Florian Lintner', room:'209', bid:'PP-20260831-FlorianLintner', net:800.00  }
+      ];
+      var grossSum9 = 6692.00, feeAmt9 = 338.60;
+      var startRow9 = sheet9.getLastRow() + 1;
+      var summaryParts9 = [];
+      guests9.forEach(function(r, idx) {
+        var feeShare = feeAmt9 * (r.net / grossSum9);
+        var netShare = r.net - feeShare;
+        sheet9.getRange(startRow9 + idx, 1, 1, HEADERS.length).setValues([[
+          scbDate9, 'SCB (PayPal)', baseBid9, r.bid,
+          r.guest, r.room, '', '', '',
+          '', '', netShare.toFixed(2),
+          '',
+          '↳ ' + r.guest + ' (' + r.bid + ') NET ฿' + netShare.toFixed(2) + ' | Value Date: ' + scbDate9
+        ]]);
+        summaryParts9.push(r.guest + '(' + r.bid + ') NET ฿' + netShare.toFixed(2));
+      });
+      sheet9.getRange(startRow9 + guests9.length, 1, 1, HEADERS.length).setValues([[
+        scbDate9, 'SCB (PayPal)', baseBid9, guests9.map(function(r){return r.bid;}).join(', '),
+        guests9.map(function(r){return r.guest;}).join(', '), guests9.map(function(r){return r.room;}).join(', '),
+        '', '', '',
+        grossSum9.toFixed(2), feeAmt9.toFixed(2), (grossSum9-feeAmt9).toFixed(2),
+        '✅ Matched - PayPal direct booking',
+        '✅ PayPal → SCB | ' + summaryParts9.join(' | ') + ' | Value Date: ' + scbDate9
+      ]]);
+      // Delete higher row index first so the second delete's target doesn't shift.
+      var rowsToDelete9 = [found9.row0, found9.row1].sort(function(a,b){return b-a;});
+      sheet9.deleteRow(rowsToDelete9[0]);
+      sheet9.deleteRow(rowsToDelete9[1]);
+      fixed9 = true;
+    }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixPayPalFormat0911: ' + (fixed9 ? 'แก้เป็น format ↳ sub-detail + summary แล้ว (3 แถว)' : 'ไม่พบแถว :0/:1 (อาจแก้ไปแล้ว)') + '</body>'
+    );
+  }
   if (p.action==='splitPayPalRow0911') {
     // One-off: SCB-2026-09-11-6353.40 was written merged (before the
     // per-guest split logic above existed). Splits it into two rows —

@@ -111,6 +111,7 @@ function matchSCBtoPayPal(sheet) {
     if ((row[C.status-1]||'').toString().indexOf('รอโอนเข้าบัญชี') !== 0) return;
     ppRows.push({
       rowIndex: i+2,
+      bid: (row[C.bid-1]||'').toString(),
       guest: (row[C.guest-1]||'').toString(),
       room: (row[C.room-1]||'').toString().trim(),
       net: parseFloat((row[C.net-1]||0).toString().replace(/,/g,'')) || 0,
@@ -180,33 +181,42 @@ function matchSCBtoPayPal(sheet) {
       if (r0.room && r0.room !== '?') sheet.getRange(op.scbRow, C.room).setValue(r0.room);
       sheet.getRange(op.scbRow, C.notes).setValue(op.note);
     } else {
-      // Multiple guests bundled into one SCB deposit — per Nathan, split into
-      // one row per guest instead of merging (2026-09-11). Fee is allocated
-      // proportionally by each guest's share of the gross batch total; flagged
-      // in the note as an estimate since PayPal's actual per-txn fee isn't
-      // available here (see file header limitation #2). Appends new rows at
-      // the bottom (same pattern as recordKnownPayPalPayments_20260909) then
-      // deletes the original merged row — safe because ops are processed
-      // top-down, so any still-pending op has a smaller row number and is
-      // unaffected by this deletion.
+      // Multiple guests bundled into one SCB deposit — match the pattern
+      // already used elsewhere in this sheet for multi-guest Airbnb/Trip
+      // batches (see e.g. SCB-2026-09-09-9293.35): one '↳' sub-detail row
+      // per guest (same Booking ID, individual Conf Code/room/NET, no
+      // status text) plus one summary row (same Booking ID, combined
+      // guests/rooms, ✅ status, gross/fee/net in ยอดรวม/Commission/NET).
+      // Fee is allocated proportionally by gross share per guest, flagged
+      // as an estimate since PayPal doesn't expose per-txn fees here (see
+      // file header limitation #2). Appends at the bottom, same pattern as
+      // recordKnownPayPalPayments_20260909, then deletes the original
+      // pre-split row — safe because ops are processed top-down, so any
+      // still-pending op has a smaller row number and is unaffected.
       var startRow = sheet.getLastRow() + 1;
+      var summaryNoteParts = [];
       op.ppRows.forEach(function(r, idx) {
         var feeShare = op.grossSum > 0 ? (op.feeAmt * (r.net / op.grossSum)) : 0;
         var netShare = r.net - feeShare;
-        var rowVals = [
-          op.scbDate, 'SCB (PayPal)', bidBase + ':' + idx, '',
+        sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setValues([[
+          op.scbDate, 'SCB (PayPal)', bidBase, r.bid,
           r.guest, (r.room && r.room !== '?') ? r.room : '?',
           '', '', '',
-          r.net, feeShare.toFixed(2), netShare.toFixed(2),
-          '✅ Matched - PayPal direct booking',
-          'PayPal → SCB (split ' + (idx+1) + '/' + op.ppRows.length + ' of ' + bidBase + ') | '
-            + r.guest + ' gross ฿' + r.net.toFixed(2) + ' - fee ~฿' + feeShare.toFixed(2)
-            + ' (' + (op.feeRatio*100).toFixed(1) + '% of batch fee, allocated proportionally'
-            + ' — verify against PayPal per-txn fee manually) = net ฿' + netShare.toFixed(2)
-            + ' | Value Date: ' + op.scbDate
-        ];
-        sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setValues([rowVals]);
+          '', '', netShare.toFixed(2),
+          '',
+          '↳ ' + r.guest + ' (' + r.bid + ') NET ฿' + netShare.toFixed(2) + ' | Value Date: ' + op.scbDate
+        ]]);
+        summaryNoteParts.push(r.guest + '(' + r.bid + ') NET ฿' + netShare.toFixed(2));
       });
+      var rooms = op.ppRows.map(function(r){ return r.room; }).filter(function(r){ return r && r !== '?'; });
+      sheet.getRange(startRow + op.ppRows.length, 1, 1, HEADERS.length).setValues([[
+        op.scbDate, 'SCB (PayPal)', bidBase, op.ppRows.map(function(r){return r.bid;}).join(', '),
+        op.ppRows.map(function(r){return r.guest;}).join(', '), rooms.join(', '),
+        '', '', '',
+        op.grossSum.toFixed(2), op.feeAmt.toFixed(2), (op.grossSum - op.feeAmt).toFixed(2),
+        '✅ Matched - PayPal direct booking',
+        '✅ PayPal → SCB | ' + summaryNoteParts.join(' | ') + ' | Value Date: ' + op.scbDate
+      ]]);
       sheet.deleteRow(op.scbRow);
     }
 
