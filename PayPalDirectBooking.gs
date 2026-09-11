@@ -106,16 +106,42 @@ function matchSCBtoPayPal(sheet) {
   var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
 
   var ppRows = [];
+  var ciCoMap = null; // lazily built — only needed if a row is missing ci/co
   data.forEach(function(row, i) {
     if ((row[C.ota-1]||'').toString().trim() !== 'PayPal') return;
     if ((row[C.status-1]||'').toString().indexOf('รอโอนเข้าบัญชี') !== 0) return;
+    var guest = (row[C.guest-1]||'').toString();
+    var ci = normalizeDate(row[C.ci-1]);
+    var co = normalizeDate(row[C.co-1]);
+    var nights = row[C.nights-1] || '';
+    if (!ci || !co) {
+      // PayPal rows created via one-off/manual recording (e.g.
+      // recordKnownPayPalPayments_*) don't populate ci/co the way
+      // parseAirbnbEmail etc. do from the OTA email — but ci/co is what
+      // loft-booking-invoice-todo's makeMatchKeys_() uses to link this
+      // payout back to an actual Apartmentery booking. Without it, the
+      // invoice/receipt is silently never auto-created (found 2026-09-11,
+      // Kari Ramsey/Florian Lintner). Falls back to a Sheet1 lookup by
+      // guest name — same map getSheet1CiCoMap() already builds for this
+      // exact purpose elsewhere in this file (see its own header comment,
+      // 2026-07-24 Chani Boran case). CAVEAT: getSheet1CiCoMap() keeps only
+      // one ci/co per guest name, so a guest with multiple separate stays
+      // (e.g. Kari Ramsey's earlier Booking.com stay 09-01→09-15 vs this
+      // Direct stay 09-15→09-30) can resolve to the WRONG stay. Good enough
+      // as a fallback, but if guest name collisions like this are common,
+      // verify manually rather than trusting this blindly.
+      if (!ciCoMap) ciCoMap = getSheet1CiCoMap();
+      var hit = ciCoMap.exact[normG(guest)];
+      if (hit) { ci = ci || hit.ci; co = co || hit.co; nights = nights || hit.nights; }
+    }
     ppRows.push({
       rowIndex: i+2,
       bid: (row[C.bid-1]||'').toString(),
-      guest: (row[C.guest-1]||'').toString(),
+      guest: guest,
       room: (row[C.room-1]||'').toString().trim(),
       net: parseFloat((row[C.net-1]||0).toString().replace(/,/g,'')) || 0,
-      dateStr: normalizeDate(row[C.date-1])
+      dateStr: normalizeDate(row[C.date-1]),
+      ci: ci, co: co, nights: nights
     });
   });
   if (!ppRows.length) return;
@@ -179,6 +205,9 @@ function matchSCBtoPayPal(sheet) {
       sheet.getRange(op.scbRow, C.status).setValue('✅ Matched - PayPal direct booking');
       sheet.getRange(op.scbRow, C.guest).setValue(r0.guest);
       if (r0.room && r0.room !== '?') sheet.getRange(op.scbRow, C.room).setValue(r0.room);
+      if (r0.ci) sheet.getRange(op.scbRow, C.ci).setValue(r0.ci);
+      if (r0.co) sheet.getRange(op.scbRow, C.co).setValue(r0.co);
+      if (r0.nights) sheet.getRange(op.scbRow, C.nights).setValue(r0.nights);
       sheet.getRange(op.scbRow, C.notes).setValue(op.note);
     } else {
       // Multiple guests bundled into one SCB deposit — match the pattern
@@ -202,7 +231,7 @@ function matchSCBtoPayPal(sheet) {
         rng.setValues([[
           op.scbDate, 'SCB (PayPal)', bidBase, r.bid,
           r.guest, (r.room && r.room !== '?') ? r.room : '?',
-          '', '', '',
+          r.ci || '', r.co || '', r.nights || '',
           '', '', netShare.toFixed(2),
           '',
           '↳ ' + r.guest + ' (' + r.bid + ') NET ฿' + netShare.toFixed(2) + ' | Value Date: ' + op.scbDate
@@ -212,11 +241,17 @@ function matchSCBtoPayPal(sheet) {
         summaryNoteParts.push(r.guest + '(' + r.bid + ') NET ฿' + netShare.toFixed(2));
       });
       var rooms = op.ppRows.map(function(r){ return r.room; }).filter(function(r){ return r && r !== '?'; });
+      // Summary row's own ci/co/nights: earliest check-in, latest check-out,
+      // nights summed — same convention as the existing multi-guest Airbnb
+      // summary rows (see SCB-2026-09-09-9293.35: ci=min, co=max, nights=sum).
+      var cis = op.ppRows.map(function(r){return r.ci;}).filter(Boolean).sort();
+      var cos = op.ppRows.map(function(r){return r.co;}).filter(Boolean).sort();
+      var nightsSum = op.ppRows.reduce(function(s,r){ return s + (parseFloat(r.nights)||0); }, 0);
       var summaryRng = sheet.getRange(startRow + op.ppRows.length, 1, 1, HEADERS.length);
       summaryRng.setValues([[
         op.scbDate, 'SCB (PayPal)', bidBase, op.ppRows.map(function(r){return r.bid;}).join(', '),
         op.ppRows.map(function(r){return r.guest;}).join(', '), rooms.join(', '),
-        '', '', '',
+        cis[0] || '', cos[cos.length-1] || '', nightsSum || '',
         op.grossSum.toFixed(2), op.feeAmt.toFixed(2), (op.grossSum - op.feeAmt).toFixed(2),
         '✅ Matched - PayPal direct booking',
         '✅ PayPal → SCB | ' + summaryNoteParts.join(' | ') + ' | Value Date: ' + op.scbDate

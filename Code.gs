@@ -2821,6 +2821,62 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
     );
   }
+  if (p.action==='fixPayPalDates0911') {
+    // One-off: SCB-2026-09-11-6353.40's sub-detail rows (and summary) were
+    // written with blank ci/co — found during full pipeline audit 2026-09-11.
+    // loft-booking-invoice-todo's makeMatchKeys_() needs a real checkin date
+    // to link this payout to Kari/Florian's actual Apartmentery booking; with
+    // ci blank, the invoice/receipt would never auto-create. Real dates
+    // pulled from Sheet1: note Kari Ramsey has TWO separate stays back to
+    // back (BKC-kariramsey-20260831: 09-01→09-15, DBK-kariramsey-20260902:
+    // 09-15→09-30) — this PayPal payment is for the Direct one (resId date
+    // suffix matches), so hardcoded rather than trusting name-only lookup.
+    // Safe to re-run: only touches rows still missing ci.
+    var ss11 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet11 = ss11.getSheetByName(TAB_NAME);
+    var last11 = sheet11.getLastRow();
+    var fixedRows11 = [];
+    if (last11 >= 2) {
+      var rng11 = sheet11.getRange(2, 1, last11 - 1, HEADERS.length).getValues();
+      var dateFor11 = {
+        'PP-20260902-KariRamsey':     { ci:'2026-09-15', co:'2026-09-30', n:15 },
+        'PP-20260831-FlorianLintner': { ci:'2026-08-31', co:'2026-09-02', n:2  }
+      };
+      for (var i11 = 0; i11 < rng11.length; i11++) {
+        var bidThis = String(rng11[i11][C.bid-1]);
+        var confThis = String(rng11[i11][C.conf-1]);
+        var already = rng11[i11][C.ci-1];
+        if (already) continue;
+        var d11 = null;
+        if (bidThis === 'PP-20260902-KariRamsey' || bidThis === 'PP-20260831-FlorianLintner') {
+          d11 = dateFor11[bidThis];
+        } else if (bidThis === 'SCB-2026-09-11-6353.40' && dateFor11[confThis]) {
+          d11 = dateFor11[confThis]; // sub-detail row: Conf.Code = the PP- id
+        }
+        if (!d11) continue;
+        var row11 = 2 + i11;
+        sheet11.getRange(row11, C.ci).setValue(d11.ci);
+        sheet11.getRange(row11, C.co).setValue(d11.co);
+        sheet11.getRange(row11, C.nights).setValue(d11.n);
+        fixedRows11.push(row11);
+      }
+      // Summary row (Conf.Code has a comma) needs min ci / max co / summed nights.
+      for (var j11 = 0; j11 < rng11.length; j11++) {
+        if (String(rng11[j11][C.bid-1]) === 'SCB-2026-09-11-6353.40'
+            && String(rng11[j11][C.conf-1]).indexOf(',') >= 0) {
+          var rowS11 = 2 + j11;
+          sheet11.getRange(rowS11, C.ci).setValue('2026-08-31');
+          sheet11.getRange(rowS11, C.co).setValue('2026-09-30');
+          sheet11.getRange(rowS11, C.nights).setValue(17);
+          fixedRows11.push(rowS11);
+        }
+      }
+    }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixPayPalDates0911: เติมวันที่ ' + fixedRows11.length + ' แถว</body>'
+    );
+  }
   if (p.action==='colorPayPalRows0911') {
     // One-off: fixPayPalFormat0911 wrote correct values/format but used only
     // setValues() — never called setBackground()/font styling, so the rows
