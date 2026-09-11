@@ -198,7 +198,8 @@ function matchSCBtoPayPal(sheet) {
       op.ppRows.forEach(function(r, idx) {
         var feeShare = op.grossSum > 0 ? (op.feeAmt * (r.net / op.grossSum)) : 0;
         var netShare = r.net - feeShare;
-        sheet.getRange(startRow + idx, 1, 1, HEADERS.length).setValues([[
+        var rng = sheet.getRange(startRow + idx, 1, 1, HEADERS.length);
+        rng.setValues([[
           op.scbDate, 'SCB (PayPal)', bidBase, r.bid,
           r.guest, (r.room && r.room !== '?') ? r.room : '?',
           '', '', '',
@@ -206,10 +207,13 @@ function matchSCBtoPayPal(sheet) {
           '',
           '↳ ' + r.guest + ' (' + r.bid + ') NET ฿' + netShare.toFixed(2) + ' | Value Date: ' + op.scbDate
         ]]);
+        rng.setBackground(SCB_SUB_BG).setFontStyle('italic').setFontColor('#444444').setFontWeight('normal');
+        sheet.getRange(startRow + idx, 10, 1, 3).setNumberFormat('#,##0.00');
         summaryNoteParts.push(r.guest + '(' + r.bid + ') NET ฿' + netShare.toFixed(2));
       });
       var rooms = op.ppRows.map(function(r){ return r.room; }).filter(function(r){ return r && r !== '?'; });
-      sheet.getRange(startRow + op.ppRows.length, 1, 1, HEADERS.length).setValues([[
+      var summaryRng = sheet.getRange(startRow + op.ppRows.length, 1, 1, HEADERS.length);
+      summaryRng.setValues([[
         op.scbDate, 'SCB (PayPal)', bidBase, op.ppRows.map(function(r){return r.bid;}).join(', '),
         op.ppRows.map(function(r){return r.guest;}).join(', '), rooms.join(', '),
         '', '', '',
@@ -217,6 +221,8 @@ function matchSCBtoPayPal(sheet) {
         '✅ Matched - PayPal direct booking',
         '✅ PayPal → SCB | ' + summaryNoteParts.join(' | ') + ' | Value Date: ' + op.scbDate
       ]]);
+      summaryRng.setBackground(SCB_TOTAL_BG).setFontWeight('bold').setFontStyle('normal').setFontColor('#000000');
+      sheet.getRange(startRow + op.ppRows.length, 10, 1, 3).setNumberFormat('#,##0.00');
       sheet.deleteRow(op.scbRow);
     }
 

@@ -2821,6 +2821,40 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
     );
   }
+  if (p.action==='colorPayPalRows0911') {
+    // One-off: fixPayPalFormat0911 wrote correct values/format but used only
+    // setValues() — never called setBackground()/font styling, so the rows
+    // rendered with no fill unlike every other matched row in the sheet
+    // (which get SCB_SUB_BG for '↳' detail rows, SCB_TOTAL_BG for summary —
+    // see e.g. fixNihel0704Payout for the reference pattern). Applies that
+    // styling retroactively to the 3 rows sharing bid SCB-2026-09-11-6353.40.
+    // Safe to re-run.
+    var ss10 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet10 = ss10.getSheetByName(TAB_NAME);
+    var last10 = sheet10.getLastRow();
+    var colored10 = 0;
+    if (last10 >= 2) {
+      var rng10 = sheet10.getRange(2, 1, last10 - 1, HEADERS.length).getValues();
+      for (var i10 = 0; i10 < rng10.length; i10++) {
+        if (String(rng10[i10][C.bid-1]) === 'SCB-2026-09-11-6353.40') {
+          var row10 = 2 + i10;
+          var isSummary10 = String(rng10[i10][C.status-1]).indexOf('✅') === 0;
+          var r10 = sheet10.getRange(row10, 1, 1, HEADERS.length);
+          if (isSummary10) {
+            r10.setBackground(SCB_TOTAL_BG).setFontWeight('bold').setFontStyle('normal').setFontColor('#000000');
+          } else {
+            r10.setBackground(SCB_SUB_BG).setFontStyle('italic').setFontColor('#444444').setFontWeight('normal');
+          }
+          sheet10.getRange(row10, 10, 1, 3).setNumberFormat('#,##0.00');
+          colored10++;
+        }
+      }
+    }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ colorPayPalRows0911: ลงสีแล้ว ' + colored10 + ' แถว</body>'
+    );
+  }
   if (p.action==='fixPayPalFormat0911') {
     // One-off: corrects the earlier attempt (SCB-2026-09-11-6353.40:0/:1)
     // which used the wrong pattern (per-guest Booking ID suffix, gross/fee
