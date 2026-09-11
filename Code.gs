@@ -2808,6 +2808,19 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ restoreFromGitHub(): ' + (msg3 || 'done') + '</body>'
     );
   }
+  if (p.action==='syncNow') {
+    // On-demand version of the hourly dailyEmailSync() trigger — for when
+    // you don't want to wait up to an hour for a specific email (e.g. an
+    // SCB deposit alert) to get pulled in and matched. Safe to re-run:
+    // dedupes against existing bookingIds same as the scheduled run.
+    var syncMsg;
+    try { dailyEmailSync(); syncMsg = 'เสร็จแล้ว'; }
+    catch(e) { syncMsg = 'ERROR: ' + e.message; }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
+    );
+  }
   if (p.action==='recordPayPal') {
     var n4 = recordKnownPayPalPayments_20260909();
     var ss4 = SpreadsheetApp.openById(MASTER_SHEET_ID);
