@@ -2821,6 +2821,31 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ dailyEmailSync() รันทันที: ' + syncMsg + '</body>'
     );
   }
+  if (p.action==='fixPayPalRoom0911') {
+    // One-off: matchSCBtoPayPal() didn't capture room at match time (fixed
+    // going forward in PayPalDirectBooking.gs), so SCB-2026-09-11-6353.40
+    // was written with room '?' despite covering two known rooms (Kari
+    // Ramsey 210, Florian Lintner 209). Backfills that single row. Safe to
+    // re-run: no-ops if room is already set.
+    var ss7 = SpreadsheetApp.openById(MASTER_SHEET_ID);
+    var sheet7 = ss7.getSheetByName(TAB_NAME);
+    var last7 = sheet7.getLastRow();
+    var fixed7 = false;
+    if (last7 >= 2) {
+      var rng7 = sheet7.getRange(2, 1, last7 - 1, HEADERS.length).getValues();
+      for (var i7 = 0; i7 < rng7.length; i7++) {
+        if (String(rng7[i7][C.bid-1]) === 'SCB-2026-09-11-6353.40'
+            && String(rng7[i7][C.room-1]).trim() !== '210, 209') {
+          sheet7.getRange(2 + i7, C.room).setValue('210, 209');
+          fixed7 = true;
+        }
+      }
+    }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixPayPalRoom0911: ' + (fixed7 ? 'ตั้งห้องเป็น 210, 209 แล้ว' : 'ไม่พบแถวที่ต้องแก้ (อาจแก้ไปแล้ว)') + '</body>'
+    );
+  }
   if (p.action==='recordPayPal') {
     var n4 = recordKnownPayPalPayments_20260909();
     var ss4 = SpreadsheetApp.openById(MASTER_SHEET_ID);

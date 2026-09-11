@@ -112,6 +112,7 @@ function matchSCBtoPayPal(sheet) {
     ppRows.push({
       rowIndex: i+2,
       guest: (row[C.guest-1]||'').toString(),
+      room: (row[C.room-1]||'').toString().trim(),
       net: parseFloat((row[C.net-1]||0).toString().replace(/,/g,'')) || 0,
       dateStr: normalizeDate(row[C.date-1])
     });
@@ -170,6 +171,14 @@ function matchSCBtoPayPal(sheet) {
     sheet.getRange(op.scbRow, C.ota).setValue('SCB (PayPal)');
     sheet.getRange(op.scbRow, C.status).setValue('✅ Matched - PayPal direct booking');
     sheet.getRange(op.scbRow, C.guest).setValue(op.ppRows.map(function(r){return r.guest;}).join(', '));
+    // Rooms are captured per PayPal entry at match time (each direct-booking
+    // row already has its room resolved via matchRoomFromSheet1, which runs
+    // before matchSCBtoPayPal in the pipeline). Multiple guests bundled into
+    // one SCB deposit means multiple rooms — join them rather than leaving
+    // '?' (the SCB deposit itself never carries a room, unlike Airbnb/Trip
+    // payouts which get one from matchSCBtoOTA's conf-code lookup).
+    var rooms = op.ppRows.map(function(r){ return r.room; }).filter(function(r){ return r && r !== '?'; });
+    if (rooms.length) sheet.getRange(op.scbRow, C.room).setValue(rooms.join(', '));
     sheet.getRange(op.scbRow, C.notes).setValue(op.note);
     op.ppRows.forEach(function(r) {
       sheet.getRange(r.rowIndex, C.status).setValue('โอนแล้ว (PayPal→SCB)');
