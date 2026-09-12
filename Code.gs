@@ -1744,7 +1744,8 @@ function buildDashboardTab(ss, keepRows) {
     'Airbnb payout':           { short:'Airbnb',   hex:'#FF5A5F', light:'#fff0f0' },
     'Booking.com remittance':  { short:'Booking',  hex:'#003580', light:'#e8f0ff' },
     'Expedia remittance':      { short:'Expedia',  hex:'#FFB900', light:'#fffbe6' },
-    'Trip.com settlement':     { short:'Trip.com', hex:'#1BA0E2', light:'#e6f7ff' }
+    'Trip.com settlement':     { short:'Trip.com', hex:'#1BA0E2', light:'#e6f7ff' },
+    'Direct':                  { short:'Direct',   hex:'#8e44ad', light:'#f5eef8' }
   };
 
   // ── Parse keepRows into monthly/OTA buckets ──────────────────
@@ -1756,6 +1757,15 @@ function buildDashboardTab(ss, keepRows) {
     var room=(row[C.room-1]||'').toString().trim();
     var m=status.match(/Matched\s*-\s*(.+)$/);
     var ota=m?m[1].trim():'SCB';
+    // Both are guest-paid-the-hotel-directly bookings (Sheet1 Channel =
+    // 'Direct') — they only differ in which rail the money physically came
+    // through before landing in SCB (straight bank transfer vs PayPal then
+    // withdrawn to SCB). That distinction matters for reconciliation (kept
+    // as-is on the row's own status/notes) but not for this revenue-by-OTA
+    // rollup, where Nathan wants them counted as one 'Direct' column
+    // (found 2026-09-11 — was showing as two separate near-identical
+    // grey columns since neither string is in OTA_META below).
+    if (ota === 'Direct/Extranet' || ota === 'PayPal direct booking') ota = 'Direct';
     var d=dt instanceof Date?dt:new Date(dt);
     var mKey=isNaN(d.getTime())?'Unknown':(d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2));
     var key=mKey+'||'+ota;
@@ -2806,6 +2816,19 @@ function doGet(e){
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width">' +
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ restoreFromGitHub(): ' + (msg3 || 'done') + '</body>'
+    );
+  }
+  if (p.action==='rebuildDashboard') {
+    // Direct trigger for rebuildBankLedger() (which rebuilds the Dashboard
+    // tab) without the overhead of a full email sync — for when only the
+    // dashboard/column grouping needs a refresh, e.g. after changing
+    // OTA_META or the Direct/PayPal merge logic in buildDashboardTab().
+    var rbMsg;
+    try { rebuildBankLedger(); rbMsg = 'เสร็จแล้ว'; }
+    catch(e) { rbMsg = 'ERROR: ' + e.message; }
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ rebuildDashboard: ' + rbMsg + '</body>'
     );
   }
   if (p.action==='syncNow') {
