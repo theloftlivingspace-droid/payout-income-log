@@ -140,6 +140,10 @@ function matchSCBtoPayPal(sheet) {
       guest: guest,
       room: (row[C.room-1]||'').toString().trim(),
       net: parseFloat((row[C.net-1]||0).toString().replace(/,/g,'')) || 0,
+      // Known PayPal fee, when the row carries it (PayPal's own receipt shows
+      // gross / fee / net per payment). Lets the match be exact-cents on
+      // (gross - fee) instead of relying only on the 0-10% fee-ratio guess.
+      fee: parseFloat((row[C.comm-1]||0).toString().replace(/,/g,'')) || 0,
       dateStr: normalizeDate(row[C.date-1]),
       ci: ci, co: co, nights: nights
     });
@@ -167,11 +171,19 @@ function matchSCBtoPayPal(sheet) {
 
     var best = null;
     for (var mask = 1; mask < (1 << pool.length); mask++) {
-      var subset = [], grossSum = 0;
+      var subset = [], grossSum = 0, feeSum = 0, allFeesKnown = true;
       for (var b = 0; b < pool.length; b++) {
-        if (mask & (1 << b)) { subset.push(pool[b]); grossSum += pool[b].net; }
+        if (mask & (1 << b)) {
+          subset.push(pool[b]); grossSum += pool[b].net;
+          if (pool[b].fee > 0) feeSum += pool[b].fee; else allFeesKnown = false;
+        }
       }
       if (grossSum <= 0) continue;
+      // Every row has a known fee and (gross - fees) equals the SCB deposit to the cent.
+      if (allFeesKnown && Math.abs(grossSum - feeSum - scbAmt) <= 0.005) {
+        best = {subset:subset, grossSum:grossSum, feeRatio:feeSum / grossSum};
+        break;
+      }
       var exact = Math.abs(grossSum - scbAmt) <= 0.005;
       var feeRatio = (grossSum - scbAmt) / grossSum;
       var plausibleFee = feeRatio >= 0 && feeRatio <= 0.10;
@@ -318,4 +330,48 @@ function recordKnownPayPalPayments_20260909() {
   }
   Logger.log('recordKnownPayPalPayments_20260909: ' + rows.length + ' rows added (of ' + known.length + ' known)');
   return rows.length;
+}
+
+
+// ── Record ONE PayPal payment that the email parser missed (or whose email
+// hasn't arrived), including PayPal's own gross/fee, then let
+// matchSCBtoPayPal() pair it with the SCB deposit to the cent.
+// o = {date:'YYYY-MM-DD', guest, gross, fee, room, ci, co, nights, ref}
+// Skips if a PayPal row with the same guest+gross already exists (in which
+// case it only back-fills the fee on that row so the exact match can work).
+// Returns 'added' | 'updated' | 'exists'.
+function recordPayPalPayment_(o) {
+  var ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
+  var sheet = ss.getSheetByName(TAB_NAME);
+  if (!sheet) throw new Error('sheet not found: ' + TAB_NAME);
+  var gross = parseFloat(o.gross), fee = parseFloat(o.fee) || 0;
+  var bid = 'PP-' + (o.ref || (o.date.replace(/-/g,'') + '-' + o.guest.replace(/\s+/g,'').slice(0,12)));
+  var last = sheet.getLastRow();
+  if (last >= 2) {
+    var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+    for (var i = 0; i < data.length; i++) {
+      var r = data[i];
+      if ((r[C.ota-1]||'').toString().trim() !== 'PayPal') continue;
+      var sameBid = (r[C.bid-1]||'').toString().trim() === bid;
+      var sameAmt = Math.abs(parseFloat((r[C.net-1]||0).toString().replace(/,/g,'')) - gross) <= 0.005
+                    && normG((r[C.guest-1]||'').toString()) === normG(o.guest);
+      if (!sameBid && !sameAmt) continue;
+      if (fee > 0 && !(parseFloat((r[C.comm-1]||0).toString().replace(/,/g,'')) > 0)) {
+        sheet.getRange(i + 2, C.comm).setValue(fee.toFixed(2));
+        return 'updated';
+      }
+      return 'exists';
+    }
+  }
+  var row = makeRow('PayPal', o.date, bid, o.ref || '', o.guest, o.room || '?',
+    o.ci || '', o.co || '', o.nights || '', gross.toFixed(2), fee ? fee.toFixed(2) : '', gross.toFixed(2),
+    'รอโอนเข้าบัญชี (PayPal)',
+    'PayPal direct booking payment | recorded manually from PayPal receipt (gross ฿' + gross.toFixed(2)
+      + ', fee ฿' + fee.toFixed(2) + ', net ฿' + (gross - fee).toFixed(2) + ')');
+  var startRow = sheet.getLastRow() + 1;
+  sheet.getRange(startRow, 1, 1, HEADERS.length).setValues([[
+    row.date, row.ota, row.bookingId, row.confCode, row.guest, row.room,
+    row.checkIn, row.checkOut, row.nights, row.total, row.commission, row.net, row.status, row.notes
+  ]]);
+  return 'added';
 }

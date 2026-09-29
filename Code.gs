@@ -3077,6 +3077,31 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ recordKnownPayPalPayments_20260909(): เพิ่ม ' + n4 + ' แถว | matchSCBtoPayPal() รันแล้ว (จะ match จริงก็ต่อเมื่อ SCB deposit email ฿6,353.40 เข้ามาแล้ว)</body>'
     );
   }
+  if (p.action==='recordPayPalPayment') {
+    // Generic tap-to-run: ?action=recordPayPalPayment&guest=..&gross=..&fee=..&date=YYYY-MM-DD
+    //   [&room=..&ci=..&co=..&nights=..&ref=..]  — records a PayPal payment the
+    // email parser missed, then runs matchSCBtoPayPal() so it pairs with SCB.
+    var res5 = recordPayPalPayment_({date:p.date, guest:p.guest, gross:p.gross, fee:p.fee,
+      room:p.room, ci:p.ci, co:p.co, nights:p.nights, ref:p.ref});
+    matchSCBtoPayPal(SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName(TAB_NAME));
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ recordPayPalPayment: ' + res5 + ' | matchSCBtoPayPal() รันแล้ว</body>'
+    );
+  }
+  if (p.action==='fixPayPalRyo0929') {
+    // Ryo Harasawa (Direct, room 113, 12 Oct → 10 Nov 2026) paid via PayPal on
+    // 2026-09-25: gross 9,536.00 - fee 460.72 = 9,075.28, which landed in SCB
+    // 2026-09-29 as an unmatched 'SCB (Transfer)' row (no PayPal row existed to
+    // pair it with).
+    var res6 = recordPayPalPayment_({date:'2026-09-25', guest:'Ryo Harasawa', gross:'9536.00', fee:'460.72',
+      room:'113 Legacy', ci:'2026-10-12', co:'2026-11-10', nights:29, ref:'BBA26092521428101'});
+    matchSCBtoPayPal(SpreadsheetApp.openById(MASTER_SHEET_ID).getSheetByName(TAB_NAME));
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixPayPalRyo0929: ' + res6 + ' | matchSCBtoPayPal() รันแล้ว</body>'
+    );
+  }
   if (p.action==='fixSupaRoom0909') {
     // matchRoomFromSheet1() only fills rows where room is still '?' — it
     // never overwrites a room that's already populated, even if wrong.
