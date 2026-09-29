@@ -370,7 +370,8 @@ function fullRebuild() {
     { key:'airbnb', q:'from:automated@airbnb.com subject:"sent a payout" after:'+SEARCH_FROM, fn:parseAirbnbEmail, lim:100 },
     { key:'lh',     q:'from:no-reply@app.littlehotelier.com after:'+SEARCH_FROM,              fn:parseLHEmail,     lim:100 },
     { key:'scb',    q:'from:No_reply_scbbusinessalert@scb.co.th after:'+SEARCH_FROM,          fn:parseSCBEmail,    lim:200 },
-    { key:'paypal', q:paypalSearchQ_(SEARCH_FROM),                                             fn:parsePayPalEmailRows, lim:100 }
+    { key:'paypal', q:paypalSearchQ_(SEARCH_FROM),                                             fn:parsePayPalEmailRows, lim:100 },
+    { key:'lhdirect', q:lhDirectSearchQ_(SEARCH_FROM),                                          fn:parseLHDirectEmail, lim:100 }
   ];
   sources.forEach(function(s) {
     if (timedOut || doneSources.indexOf(s.key) !== -1) return;
@@ -560,7 +561,8 @@ function dailyEmailSync() {
     {q:'from:no-reply@app.littlehotelier.com after:'+since,              fn:parseLHEmail},
     {q:'from:noreply_htl@trip.com after:'+since,                         fn:parseTripEmail},
     {q:'from:No_reply_scbbusinessalert@scb.co.th after:'+since,          fn:parseSCBEmail},
-    {q:paypalSearchQ_(since),                                             fn:parsePayPalEmailRows}
+    {q:paypalSearchQ_(since),                                             fn:parsePayPalEmailRows},
+    {q:lhDirectSearchQ_(since),                                           fn:parseLHDirectEmail}
   ];
   searches.forEach(function(s) {
     GmailApp.search(s.q,0,20).forEach(function(t) {

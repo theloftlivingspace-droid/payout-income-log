@@ -106,6 +106,7 @@ function matchSCBtoPayPal(sheet) {
   var data = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
 
   var ppRows = [];
+  var seenPay = {};
   var ciCoMap = null; // lazily built — only needed if a row is missing ci/co
   data.forEach(function(row, i) {
     if ((row[C.ota-1]||'').toString().trim() !== 'PayPal') return;
@@ -134,6 +135,18 @@ function matchSCBtoPayPal(sheet) {
       var hit = ciCoMap.exact[normG(guest)];
       if (hit) { ci = ci || hit.ci; co = co || hit.co; nights = nights || hit.nights; }
     }
+    // Same payment seen from two sources (PayPal notification email AND the Little
+    // Hotelier Demand Plus email, whose bookingIds differ) would otherwise sit in the
+    // pool twice and either never match or match the wrong subset. Keep the first,
+    // retire the twin so it also leaves the Pending Match list.
+    var dupKey = normG(guest) + '|' + (parseFloat((row[C.net-1]||0).toString().replace(/,/g,'')) || 0).toFixed(2);
+    if (seenPay[dupKey]) {
+      sheet.getRange(i+2, C.status).setValue('ซ้ำ (PayPal) — ข้าม');
+      var dn = sheet.getRange(i+2, C.notes);
+      dn.setValue(((dn.getValue()||'').toString()) + ' | duplicate of ' + seenPay[dupKey]);
+      return;
+    }
+    seenPay[dupKey] = (row[C.bid-1]||'').toString();
     ppRows.push({
       rowIndex: i+2,
       bid: (row[C.bid-1]||'').toString(),
@@ -374,4 +387,55 @@ function recordPayPalPayment_(o) {
     row.checkIn, row.checkOut, row.nights, row.total, row.commission, row.net, row.status, row.notes
   ]]);
   return 'added';
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// Direct bookings via Little Hotelier "Demand Plus" (ref BBA…).
+// Guest pays by PayPal at booking time — which can be weeks BEFORE check-in
+// and never touches an OTA payout email. This email is the only source that
+// carries guest + stay dates + amount paid + PayPal payment reference, so it
+// (not the PayPal notification parser, which was never validated against a
+// live email) creates the PayPal row that matchSCBtoPayPal() later pairs with
+// the SCB deposit. The pairing window is measured from the payment/booking
+// date (not check-in), so early payment is fine.
+// Found 2026-09-29 (Ryo Harasawa BBA26092521428101: paid 25 Sep, check-in
+// 12 Oct — no PayPal row existed, SCB ฿9,075.28 sat in Pending Match).
+//
+// bookingId = 'PP-' + BBA ref (one row per booking; Conf. Code = PayPal ref).
+// Only 17-char PayPal-style payment references are handled — anything else
+// (other gateways) is skipped rather than guessed.
+// ═══════════════════════════════════════════════════════════════
+function lhDirectSearchQ_(sinceStr) {
+  return 'from:donotreply@app-apac.thebookingbutton.com subject:"Booking for" after:' + (sinceStr || SEARCH_FROM);
+}
+
+function parseLHDirectEmail(msg) {
+  var body = (msg.getPlainBody() || '').replace(/\r\n/g, '\n');
+  if (!/received a new booking through/i.test(body)) return [];   // skips cancellations / modifications
+  var ref = gRe(body, /Reference Number:\s*(BBA\d+)/i);
+  if (!ref) return [];
+  var payRef = gRe(body, /Payment reference:\s*([A-Z0-9]{17})\b/);
+  if (!payRef) return [];                                         // not a PayPal-style reference
+  var paid = gRe(body, /Deposit:\s*[฿\u0e3f]?\s*([\d,]+(?:\.\d{1,2})?)/);
+  var amt = parseAmt(paid);
+  if (!(amt > 0)) return [];
+  var guest = (gRe(body, /Guest Name:\s*([^\n]+)/) || 'Unknown').replace(/\s+/g, ' ').trim();
+  guest = guest.toLowerCase().replace(/(^|\s)\S/g, function(m){ return m.toUpperCase(); });
+  var ci = lhDirectDate_(gRe(body, /Check In Date:\s*([^\n]+)/));
+  var co = lhDirectDate_(gRe(body, /Check Out Date:\s*([^\n]+)/));
+  var dt = fmtDate(msg.getDate());
+  return [makeRow('PayPal', dt, 'PP-' + ref, payRef, guest, '?', ci, co, nightsBetween(ci, co),
+    amt.toFixed(2), '', amt.toFixed(2),
+    'รอโอนเข้าบัญชี (PayPal)',
+    'PayPal direct booking payment | via Little Hotelier Demand Plus ' + ref + ' | PayPal ref ' + payRef)];
+}
+
+// '12 Oct 2026' -> '2026-10-12' ('' if unparseable)
+function lhDirectDate_(str) {
+  var m = /(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/.exec(str || '');
+  if (!m) return '';
+  var mon = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}[m[2].toLowerCase()];
+  if (!mon) return '';
+  return m[3] + '-' + ('0' + mon).slice(-2) + '-' + ('0' + m[1]).slice(-2);
 }
