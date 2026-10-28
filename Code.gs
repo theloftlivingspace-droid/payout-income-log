@@ -2799,6 +2799,13 @@ function doGet(e){
       '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ fixNihel0704Payout(): ' + msg + '</body>'
     );
   }
+  if (p.action==='importScbAtsOct2026') {
+    var msgAts = importSCBAtsOct2026();
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width">' +
+      '<body style="font-family:sans-serif;padding:24px;font-size:18px">✅ importSCBAtsOct2026(): ' + msgAts + '</body>'
+    );
+  }
   if (p.action==='fixJBarber0723') {
     var msg3 = fixJBarber0723Payout();
     return HtmlService.createHtmlOutput(

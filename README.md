@@ -34,6 +34,8 @@ Google Apps Script สำหรับ **The Loft Living Space**
 | `createDailyTrigger()` | ตั้ง trigger ครั้งแรก |
 | `rebuildBankLedger()` | rebuild Bank_Ledger tab เท่านั้น |
 | `manualMatchSCBtoTrip()` | match SCB→Trip.com แบบ manual |
+| `importSCBStatementCsv(csvText)` | นำเข้าเงินเข้าจาก statement CSV ของ SCB ที่ไม่มีอีเมลแจ้ง (เช่น ช่องทาง ATS) แล้ว match ต่อ — ดู `SCBStatementImport.gs` |
+| `?action=importScbAtsOct2026` | one-off: นำเข้ายอด ATS ต.ค. 2026 (Trip.com ฿1,990.72 ฯลฯ) |
 
 ## Pipeline
 ```
@@ -56,6 +58,8 @@ parseEmails → appendRow → matchSCBtoOTA → matchRoomFromSheet1
 | Mycondo A/B | 363 |
 
 ## Changelog
+### v22 (2026-10-28)
+- เพิ่ม `SCBStatementImport.gs` — SCB ไม่ส่งอีเมลแจ้งเงินเข้าทางช่องทาง ATS (Trip.com payout `MCL 00100789633 …`) ทำให้รายการ Trip.com ค้าง "รอ monthly settlement"; นำเข้าจาก statement CSV แทน (idempotent, dedupe ยอด+วันที่ ±1 วัน)
 ### v21 (2026-09-09)
 - เพิ่ม `PayPalDirectBooking.gs` — PayPal เป็น income source ใหม่ สำหรับ direct booking guest
 - `parsePayPalEmail()` / `parsePayPalEmailRows()` — parse email "payment received" จาก PayPal (ยังไม่ได้ validate กับ email จริง)
